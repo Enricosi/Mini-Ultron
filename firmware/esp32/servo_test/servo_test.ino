@@ -2,28 +2,78 @@
 #include <Adafruit_PWMServoDriver.h>
 
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
+void handsNeutral() {
+    pwm.writeMicroseconds(0, 1500);
+    pwm.writeMicroseconds(1, 1500);
+}
 
-void setup() {Serial.begin(115200);
+void handsUp() {
+    pwm.writeMicroseconds(0, 2000);
+    pwm.writeMicroseconds(1, 1000);
+}
 
-Wire.begin(1, 48);
+void leftHandOut() {
+    pwm.writeMicroseconds(0, 1300);
+    pwm.writeMicroseconds(1, 1500);
+}
 
-pwm.begin();
+void rightHandOut() {
+    pwm.writeMicroseconds(0, 1500);
+    pwm.writeMicroseconds(1, 1700);
+}
 
-pwm.setPWMFreq(50);
+void waveRightHand() {
+    pwm.writeMicroseconds(1, 1700);
+    delay(250);
 
-pwm.writeMicroseconds(0, 1500);
+    pwm.writeMicroseconds(1, 1400);
+    delay(250);
+
+    pwm.writeMicroseconds(1, 1700);
+    delay(250);
+
+    pwm.writeMicroseconds(1, 1400);
+    delay(250);
+
+    pwm.writeMicroseconds(1, 1500);
+}
+
+void setup() {
+    Serial.begin(115200);
+
+    Wire.begin(1, 48);
+
+    pwm.begin();
+    pwm.setPWMFreq(50);
+
+    pwm.writeMicroseconds(0, 1500);
+    pwm.writeMicroseconds(1, 1500);
+    
+    handsNeutral();
 }
 
 void loop() {
-    pwm.writeMicroseconds(0, 1100);
-    delay(1000);
+    if (Serial.available() > 0) {
+        char command = Serial.read();
 
-    pwm.writeMicroseconds(0, 1500);
-    delay(1000);
+        if (command == 'n') {
+            handsNeutral();
+        }
 
-    pwm.writeMicroseconds(0, 1900);
-    delay(1000);
+        if (command == 'u') {
+            handsUp();
+        }
 
-    pwm.writeMicroseconds(0, 1500);
-    delay(1000);
+        if (command == 'l') {
+            leftHandOut();
+        }
+
+        if (command == 'r') {
+            rightHandOut();
+        }
+
+        if (command == 'w') {
+            waveRightHand();
+        }
+    }
 }
