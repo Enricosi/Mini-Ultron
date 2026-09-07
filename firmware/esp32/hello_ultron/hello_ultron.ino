@@ -10,7 +10,8 @@ const int OLED_CS   = 42;
 
 enum FaceState {
     ANGRY,
-    LISTENING
+    LISTENING,
+    THINKING
 };
 
 FaceState currentState = ANGRY;
@@ -30,6 +31,11 @@ unsigned long lookDuration = 800;
 
 bool lookingAside = false;
 int pupilOffset = 0;
+
+unsigned long lastThinkingTime = 0;
+bool thinkingBright = true;
+
+const unsigned long THINKING_INTERVAL = 350;
 
 Adafruit_SSD1331 display = Adafruit_SSD1331(
     OLED_CS,
@@ -89,6 +95,27 @@ void drawListeningEyes() {
     display.fillCircle(66, 28, 9, 0x07FF);
 }
 
+void drawThinkingEyes(uint16_t color) {
+    display.fillScreen(0x0000);
+
+    display.fillRoundRect(19, 24, 22, 9, 4, color);
+    display.fillRoundRect(55, 24, 22, 9, 4, color);
+}
+
+void updateThinking(unsigned long now) {
+    if (now - lastThinkingTime >= THINKING_INTERVAL) {
+        thinkingBright = !thinkingBright;
+
+        if (thinkingBright) {
+            drawThinkingEyes(0x801F);
+        } else {
+            drawThinkingEyes(0x4010);
+        }
+
+        lastThinkingTime = now;
+    }
+}
+
 void drawFace() {
     switch (currentState) {
         case ANGRY:
@@ -98,7 +125,11 @@ void drawFace() {
         case LISTENING:
             drawListeningEyes();
             break;
+        case THINKING:
+            drawThinkingEyes(0x801F);
+            break;    
     }
+
 }
 
 void setFaceState(FaceState newState) {
@@ -178,6 +209,10 @@ void loop() {
         if (command == 'l') {
             setFaceState(LISTENING);
         }
+
+        if (command == 't') {
+            setFaceState(THINKING);
+        }
     }
 
     if (currentState == ANGRY) {
@@ -186,5 +221,9 @@ void loop() {
         if (!eyesClosed) {
             updateLookAround(now);
         }
+    }
+
+    if (currentState == THINKING) {
+        updateThinking(now);
     }
 }
