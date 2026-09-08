@@ -1,6 +1,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1331.h>
 #include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
 
 const int OLED_SCLK = 47;
 const int OLED_MOSI = 21;
@@ -44,6 +46,8 @@ Adafruit_SSD1331 display = Adafruit_SSD1331(
     OLED_SCLK,
     OLED_RST
 );
+
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
 
 void drawAngryEyes(int pupilOffset) {
     display.fillScreen(0x0000);
@@ -189,11 +193,52 @@ void updateLookAround(unsigned long now) {
     }
 }
 
+void handsNeutral() {
+    pwm.writeMicroseconds(0, 1500);
+    pwm.writeMicroseconds(1, 1500);
+}
+
+void handsUp() {
+    pwm.writeMicroseconds(0, 2000);
+    pwm.writeMicroseconds(1, 1000);
+}
+
+void leftHandOut() {
+    pwm.writeMicroseconds(0, 1300);
+    pwm.writeMicroseconds(1, 1500);
+}
+
+void rightHandOut() {
+    pwm.writeMicroseconds(0, 1500);
+    pwm.writeMicroseconds(1, 1700);
+}
+
+void waveRightHand() {
+    pwm.writeMicroseconds(1, 1700);
+    delay(250);
+
+    pwm.writeMicroseconds(1, 1400);
+    delay(250);
+
+    pwm.writeMicroseconds(1, 1700);
+    delay(250);
+
+    pwm.writeMicroseconds(1, 1400);
+    delay(250);
+
+    pwm.writeMicroseconds(1, 1500);
+}
+
 void setup() {Serial.begin(115200);
   Serial.println("Mini-Ultron online");
 
   display.begin();
   drawFace();
+  Wire.begin(1, 48);
+
+  pwm.begin();
+  pwm.setPWMFreq(50);
+  handsNeutral();
 }
 
 void loop() {
@@ -213,6 +258,25 @@ void loop() {
         if (command == 't') {
             setFaceState(THINKING);
         }
+        if (command == 'N') {
+            handsNeutral();
+        }
+
+        if (command == 'U') {
+            handsUp();
+        }
+
+        if (command == 'L') {
+            leftHandOut();
+        }
+
+        if (command == 'R') {
+            rightHandOut();
+        }
+
+        if (command == 'W') {
+            waveRightHand();
+        }
     }
 
     if (currentState == ANGRY) {
@@ -226,4 +290,5 @@ void loop() {
     if (currentState == THINKING) {
         updateThinking(now);
     }
-}
+}   
+
