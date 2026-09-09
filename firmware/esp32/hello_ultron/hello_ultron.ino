@@ -1,294 +1,37 @@
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1331.h>
-#include <SPI.h>
-#include <Wire.h>
-#include <Adafruit_PWMServoDriver.h>
+/**********************************************************************
+  Mini-Ultron - ESP32-S3 interaction controller.
 
-const int OLED_SCLK = 47;
-const int OLED_MOSI = 21;
-const int OLED_RST  = 2;
-const int OLED_DC   = 41;
-const int OLED_CS   = 42;
+  Owns the OLED face (face.h), the deterministic link to the Pico W
+  locomotion/neck/safety controller (pico_link.h), and a development-
+  only debug console (debug_console.h). Arm/PCA9685 gestures are
+  preserved but deferred from v1 (arm_gestures.h).
 
-enum FaceState {
-    ANGRY,
-    LISTENING,
-    THINKING
-};
+  Type HELP over USB Serial (115200 baud) for the debug command list.
+**********************************************************************/
+#include "face.h"
+#include "pico_link.h"
+#include "arm_gestures.h"
+#include "debug_console.h"
 
-FaceState currentState = ANGRY;
+void setup() {
+    Serial.begin(115200);
+    Serial.println("Mini-Ultron online");
 
-unsigned long lastBlinkTime = 0;
-unsigned long blinkStartTime = 0;
-unsigned long nextBlinkDelay = 3000;
+    faceInit();
+    picoLinkInit();
+    debugConsoleInit();
 
-bool eyesClosed = false;
+#if MINI_ULTRON_ENABLE_ARMS
+    armsInit();
+#endif
 
-const unsigned long BLINK_DURATION = 150;
-
-unsigned long lastLookTime = 0;
-unsigned long lookStartTime = 0;
-unsigned long nextLookDelay = 2500;
-unsigned long lookDuration = 800;
-
-bool lookingAside = false;
-int pupilOffset = 0;
-
-unsigned long lastThinkingTime = 0;
-bool thinkingBright = true;
-
-const unsigned long THINKING_INTERVAL = 350;
-
-Adafruit_SSD1331 display = Adafruit_SSD1331(
-    OLED_CS,
-    OLED_DC,
-    OLED_MOSI,
-    OLED_SCLK,
-    OLED_RST
-);
-
-Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40, Wire);
-
-void drawAngryEyes(int pupilOffset) {
-    display.fillScreen(0x0000);
-
-    // Ojo izquierdo
-    display.fillTriangle(
-        20, 22,
-        40, 27,
-        38, 34,
-        0xF800
-    );
-
-    display.fillTriangle(
-        20, 22,
-        38, 34,
-        20, 32,
-        0xF800
-    );
-
-    // Ojo derecho
-    display.fillTriangle(
-        56, 27,
-        76, 22,
-        76, 32,
-        0xF800
-    );
-
-    display.fillTriangle(
-        56, 27,
-        76, 32,
-        58, 34,
-        0xF800
-    );
-    display.fillRect(29 + pupilOffset, 26, 3, 5, 0x0000);
-    display.fillRect(65 + pupilOffset, 26, 3, 5, 0x0000);
-}
-
-void drawClosedEyes() {
-    display.fillScreen(0x0000);
-
-    display.fillRect(20, 28, 20, 2, 0xF800);
-    display.fillRect(56, 28, 20, 2, 0xF800);
-}
-
-void drawListeningEyes() {
-    display.fillScreen(0x0000);
-
-    display.fillCircle(30, 28, 9, 0x07FF);
-    display.fillCircle(66, 28, 9, 0x07FF);
-}
-
-void drawThinkingEyes(uint16_t color) {
-    display.fillScreen(0x0000);
-
-    display.fillRoundRect(19, 24, 22, 9, 4, color);
-    display.fillRoundRect(55, 24, 22, 9, 4, color);
-}
-
-void updateThinking(unsigned long now) {
-    if (now - lastThinkingTime >= THINKING_INTERVAL) {
-        thinkingBright = !thinkingBright;
-
-        if (thinkingBright) {
-            drawThinkingEyes(0x801F);
-        } else {
-            drawThinkingEyes(0x4010);
-        }
-
-        lastThinkingTime = now;
-    }
-}
-
-void drawFace() {
-    switch (currentState) {
-        case ANGRY:
-            drawAngryEyes(0);
-            break;
-
-        case LISTENING:
-            drawListeningEyes();
-            break;
-        case THINKING:
-            drawThinkingEyes(0x801F);
-            break;    
-    }
-
-}
-
-void setFaceState(FaceState newState) {
-    currentState = newState;
-
-    eyesClosed = false;
-    lastBlinkTime = millis();
-    nextBlinkDelay = random(2000, 6000);
-
-    lookingAside = false;
-    pupilOffset = 0;
-    lastLookTime = millis();
-    nextLookDelay = random(1500, 4000);
-
-    drawFace();
-}
-
-void updateBlink(unsigned long now) {
-    if (!eyesClosed && now - lastBlinkTime >= nextBlinkDelay) {
-        drawClosedEyes();
-
-        eyesClosed = true;
-        blinkStartTime = now;
-    }
-
-    if (eyesClosed && now - blinkStartTime >= BLINK_DURATION) {
-        drawAngryEyes(pupilOffset);
-
-        eyesClosed = false;
-        lastBlinkTime = now;
-        nextBlinkDelay = random(2000, 6000);
-    }
-}
-
-void updateLookAround(unsigned long now) {
-    if (!lookingAside && now - lastLookTime >= nextLookDelay) {
-        if (random(0, 2) == 0) {
-            pupilOffset = -3;
-        } else {
-            pupilOffset = 3;
-        }
-
-        drawAngryEyes(pupilOffset);
-
-        lookingAside = true;
-        lookStartTime = now;
-        lookDuration = random(700, 1300);
-    }
-
-    if (lookingAside && now - lookStartTime >= lookDuration) {
-        pupilOffset = 0;
-        drawAngryEyes(pupilOffset);
-
-        lookingAside = false;
-        lastLookTime = now;
-        nextLookDelay = random(1500, 4000);
-    }
-}
-
-void handsNeutral() {
-    pwm.writeMicroseconds(0, 1500);
-    pwm.writeMicroseconds(1, 1500);
-}
-
-void handsUp() {
-    pwm.writeMicroseconds(0, 2000);
-    pwm.writeMicroseconds(1, 1000);
-}
-
-void leftHandOut() {
-    pwm.writeMicroseconds(0, 1300);
-    pwm.writeMicroseconds(1, 1500);
-}
-
-void rightHandOut() {
-    pwm.writeMicroseconds(0, 1500);
-    pwm.writeMicroseconds(1, 1700);
-}
-
-void waveRightHand() {
-    pwm.writeMicroseconds(1, 1700);
-    delay(250);
-
-    pwm.writeMicroseconds(1, 1400);
-    delay(250);
-
-    pwm.writeMicroseconds(1, 1700);
-    delay(250);
-
-    pwm.writeMicroseconds(1, 1400);
-    delay(250);
-
-    pwm.writeMicroseconds(1, 1500);
-}
-
-void setup() {Serial.begin(115200);
-  Serial.println("Mini-Ultron online");
-
-  display.begin();
-  drawFace();
-  Wire.begin(1, 48);
-
-  pwm.begin();
-  pwm.setPWMFreq(50);
-  handsNeutral();
+    Serial.println("Type HELP for debug commands.");
 }
 
 void loop() {
     unsigned long now = millis();
 
-    if (Serial.available() > 0) {
-        char command = Serial.read();
-
-        if (command == 'a') {
-            setFaceState(ANGRY);
-        }
-
-        if (command == 'l') {
-            setFaceState(LISTENING);
-        }
-
-        if (command == 't') {
-            setFaceState(THINKING);
-        }
-        if (command == 'N') {
-            handsNeutral();
-        }
-
-        if (command == 'U') {
-            handsUp();
-        }
-
-        if (command == 'L') {
-            leftHandOut();
-        }
-
-        if (command == 'R') {
-            rightHandOut();
-        }
-
-        if (command == 'W') {
-            waveRightHand();
-        }
-    }
-
-    if (currentState == ANGRY) {
-        updateBlink(now);
-
-        if (!eyesClosed) {
-            updateLookAround(now);
-        }
-    }
-
-    if (currentState == THINKING) {
-        updateThinking(now);
-    }
-}   
-
+    debugConsolePoll();
+    picoLinkPoll();
+    faceUpdate(now);
+}
