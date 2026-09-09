@@ -3,3 +3,5 @@ ultron_env/
 __pycache__/
 *.pyc
 .env
+.claude/
+freenove-car-reference/
