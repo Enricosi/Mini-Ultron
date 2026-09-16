@@ -25,10 +25,21 @@
 #include <Arduino.h>
 #include "RP2040_PWM.h"
 
-// #define REVERSE_MOTOR1
-// #define REVERSE_MOTOR2
-// #define REVERSE_MOTOR3
-// #define REVERSE_MOTOR4
+// Physically tested 2026-09-13: MOVE:FWD/MOVE:BACK were inverted on the
+// two wheels that were actually spinning (M2/M3, the rear pair) - their
+// physical wiring polarity is mirrored relative to what Freenove's demo
+// assumed. Reversed here via the vendor-provided flags rather than by
+// touching the vendored function bodies. M1/M4 (front pair) were not
+// spinning at all during that test - a separate hardware issue
+// (connector/wiring, not software).
+//
+// 2026-09-15: front wheel connector/wiring issue resolved - M1/M4 now
+// spin, but Enrico confirmed they also run inverted on MOVE:FWD, same
+// mirrored-polarity pattern as M2/M3. Reversed here the same way.
+#define REVERSE_MOTOR1
+#define REVERSE_MOTOR2
+#define REVERSE_MOTOR3
+#define REVERSE_MOTOR4
 
 /////////////////////Servo drive area///////////////////////////////////
 #define PIN_SERVO1  13    //define servo pin (front/neck servo, shield header)

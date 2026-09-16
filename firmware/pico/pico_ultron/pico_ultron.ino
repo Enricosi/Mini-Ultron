@@ -23,9 +23,11 @@
 #include "command_parser.h"
 
 static CommandParserState usbParserState;
+static CommandParserState uartParserState;
 
 void setup() {
   Serial.begin(9600);
+  Serial1.begin(9600);  // UART to the ESP32-S3 (GPIO0 TX / GPIO1 RX)
 
   Motor_Setup();
   motorControllerInit();  // motors explicitly stopped before anything else
@@ -33,14 +35,17 @@ void setup() {
   sensorsInit();
   safetyInit();
   commandParserInit(usbParserState);
+  commandParserInit(uartParserState);
 
   Serial.println("READY");
 }
 
 void loop() {
   commandParserPoll(Serial, usbParserState);
+  commandParserPoll(Serial1, uartParserState);
 
   if (safetyCheckTimeout()) {
     Serial.println("STOPPED:TIMEOUT");
+    Serial1.println("STOPPED:TIMEOUT");
   }
 }

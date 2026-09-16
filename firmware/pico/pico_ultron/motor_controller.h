@@ -1,9 +1,10 @@
 /**********************************************************************
   Mini-Ultron high-level locomotion API, built on top of Freenove's
-  Motor_M_Move(M1,M2,M3,M4). Wheel order (verified against the official
-  01.1_Car_Move_and_Turn demo):
+  Motor_M_Move(M1,M2,M3,M4). Wheel order (physically verified on this
+  chassis by Enrico, 2026-09-13 — supersedes the earlier inference from
+  Freenove's demo code, which had M3/M4 swapped):
     M1 = front-left   M2 = back-left
-    M3 = front-right  M4 = back-right
+    M3 = back-right   M4 = front-right
 **********************************************************************/
 #ifndef MOTOR_CONTROLLER_H
 #define MOTOR_CONTROLLER_H

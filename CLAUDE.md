@@ -45,12 +45,12 @@ Responsibilities are separated by controller and must stay that way:
   intents to the Pico over UART. It converts abstract intent into deterministic
   hardware behavior (e.g. `FACE:ANGRY`). It does not drive the drive motors.
 - **Pico W** is the locomotion / lower-body / local-safety controller. It owns the 4
-  DC motors, Mecanum movement, the neck/front servo (physically wired to the Freenove
-  shield, so it is the Pico's responsibility even though earlier prototyping drove a
-  temporary neck servo from the ESP32's PCA9685 — see CURRENT_STATE.md for the
-  present, unresolved state of that), the ultrasonic sensor, the line tracker, and the
-  movement watchdog/STOP logic. The Pico knows nothing about personality, LLM,
-  conversation, or *why* a move was requested — only whether the move is safe *now*.
+  DC motors, Mecanum movement, the neck/front servo (physically wired to the
+  Freenove shield's own servo header — the earlier ESP32/PCA9685 prototyping of the
+  neck is fully superseded now, not just deferred; see CURRENT_STATE.md), the
+  ultrasonic sensor, the line tracker, and the movement watchdog/STOP logic. The
+  Pico knows nothing about personality, LLM, conversation, or *why* a move was
+  requested — only whether the move is safe *now*.
 
 The rule that holds this together: **high-level intent → validated command →
 deterministic firmware behavior**, and **the lowest relevant physical controller
@@ -98,10 +98,10 @@ while moving must always resolve to STOP, never to continued motion.
 - Pico command protocol is an ASCII line protocol over any `Stream`, so the same
   parser code serves USB Serial today and `Serial1`/UART to the ESP32 later without a
   rewrite. Don't design a protocol that only works over one transport.
-- Don't invent GPIO assignments (ESP32 UART pins, INMP441 pins, audio pins) ahead of
-  need. Pins get chosen once the physical mounting makes accessibility clear, and once
-  what's already occupied is known. Check `docs/CURRENT_STATE.md`'s pin table before
-  assigning anything.
+- Don't invent GPIO assignments (ESP32 UART pins, INMP441 pins, audio pins, MPU6050
+  I2C pins) ahead of need. Pins get chosen once the physical mounting makes
+  accessibility clear, and once what's already occupied is known. Check
+  `docs/CURRENT_STATE.md`'s pin table before assigning anything.
 - When a subsystem's pins aren't chosen yet but its logic can still be written
   (e.g. `firmware/esp32/hello_ultron/pico_link_config.h`), gate the real hardware
   path behind a compile-time flag with the pins left at an obviously-invalid default
@@ -118,8 +118,22 @@ while moving must always resolve to STOP, never to continued motion.
   shield's own servo header (confirmed by Enrico), not to the ESP32/PCA9685. Neck
   control must be implemented on the Pico. Don't build new features on top of an
   ESP32-driven neck.
-- Arms/PCA9685 gestures are working historical functionality, likely deferred from
-  v1. Don't delete them, and don't make new v1 firmware depend on the PCA9685.
+- The PCA9685, both arm servos, and the camera module have been physically removed
+  from (or, for the camera, never mounted onto) the ESP32 system and are **not part
+  of active v1 hardware**. Don't reserve GPIO1/GPIO48 or any other old PCA9685/camera
+  pins, and don't make any current firmware depend on them. The existing
+  arm-gesture code (`arm_gestures.{h,cpp}`) is preserved, working, historical
+  reference — kept compiled-out (`MINI_ULTRON_ENABLE_ARMS 0`) rather than deleted —
+  but treat it as deferred/historical, not active v1 functionality.
+- v1 hardware scope is decided: SSD1331 OLED, INMP441 mic, Freenove audio
+  converter/amplifier + 8Ω 2W speaker, MPU6050, UART to the Pico, neck servo (on the
+  Pico), ultrasonic, Mecanum drivetrain. MPU6050 is a firm v1 inclusion, not
+  optional — but its ESP32 GPIO pins are not chosen yet, so don't assign them ahead
+  of need (same rule as the other unwired subsystems above).
+- The Freenove audio amplifier board is powered separately via its own VCC/GND
+  (module-rated 3.3V-5V), and drives the 8Ω speaker through one complete channel
+  pair (L+/L- or R+/R-). Never wire the speaker directly to an ESP32 GPIO — it must
+  always go through the amplifier board's speaker output.
 - Prefer expressive OLED animation work over adding more physical actuators — the
   face is becoming the primary expressive channel for personality, more so than arms.
 - Non-blocking (`millis()`-based) logic is required wherever concurrency actually

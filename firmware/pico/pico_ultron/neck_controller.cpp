@@ -12,12 +12,30 @@
 // bracket/mount is Enrico's own installation, not necessarily identical
 // to Freenove's reference bracket.
 //
-// NEEDS_PHYSICAL_VERIFICATION: confirm these angles don't bind or strain
-// the actual mount before trusting them further; widen or narrow once
-// verified on the real hardware.
+// Physically tested 2026-09-13: the original assignment (LEFT=60,
+// RIGHT=120) was mirrored on this mount - swapped below to match what
+// Enrico actually observed. That swap is correct and stays.
+//
+// A same-day +10 deg software offset attempt at re-centering (tried
+// because 90 deg visibly sat ~10-15 deg right of true center) did NOT
+// fix it - reverted. Freenove's own assembly manual
+// (freenove-car-reference/Mecanum_wheels/Tutorial.pdf, p.51, "Mounting
+// the Servo Arm to Module Connector") says the rocker arm/horn must be
+// physically attached to the servo spline *while the servo is actively
+// holding 90 deg* - that's what makes 90 deg equal true mechanical
+// center. A software offset fights a mechanical misalignment instead of
+// fixing it (doesn't address binding/asymmetric strain at the extremes),
+// so this is reverted to the vendor-clean 90/60/120 rather than another
+// guessed constant. The real fix is mechanical: loosen the horn's
+// center screw, hold NECK:CENTER (90 deg) via this firmware, re-seat the
+// horn aligned to the chassis, retighten. See CURRENT_STATE.md.
+//
+// NEEDS_PHYSICAL_VERIFICATION (still open): confirm center is correct
+// after the horn is re-seated, and that LEFT/RIGHT don't bind or strain
+// the mount.
 static const float NECK_ANGLE_CENTER = 90.0f;
-static const float NECK_ANGLE_LEFT   = 60.0f;
-static const float NECK_ANGLE_RIGHT  = 120.0f;
+static const float NECK_ANGLE_LEFT   = 120.0f;
+static const float NECK_ANGLE_RIGHT  = 60.0f;
 
 static NeckPosition currentPosition = NECK_CENTER;
 

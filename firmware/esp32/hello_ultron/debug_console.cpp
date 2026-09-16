@@ -11,7 +11,7 @@ static void printHelp() {
     Serial.println(F(
         "Mini-Ultron debug console - full commands, newline-terminated:\n"
         "  FACE:IDLE|ANGRY|LISTENING|THINKING|SPEAKING|SURPRISED|SUSPICIOUS|SLEEPING|GLITCH\n"
-        "  PICO:PING | PICO:STOP | PICO:STATUS\n"
+        "  PICO:PING | PICO:STOP | PICO:STATUS | PICO:LAST\n"
         "  NECK:CENTER | NECK:LEFT | NECK:RIGHT\n"
         "  MOVE:FWD:<0-100> | MOVE:BACK:<0-100> | MOVE:LEFT:<0-100> | MOVE:RIGHT:<0-100>\n"
         "  ROTATE:L:<0-100> | ROTATE:R:<0-100>\n"
@@ -36,10 +36,35 @@ static void handleFace(const String &name) {
     Serial.println("OK");
 }
 
+static const char *picoResponseTypeName(PicoResponseType type) {
+    switch (type) {
+        case PICO_RESP_NONE: return "NONE";
+        case PICO_RESP_READY: return "READY";
+        case PICO_RESP_OK: return "OK";
+        case PICO_RESP_ERR: return "ERR";
+        case PICO_RESP_OBSTACLE: return "OBSTACLE";
+        case PICO_RESP_STOPPED_TIMEOUT: return "STOPPED_TIMEOUT";
+        case PICO_RESP_DIST: return "DIST";
+        case PICO_RESP_LINE: return "LINE";
+        default: return "UNKNOWN";
+    }
+}
+
 static void handlePico(const String &action) {
     if (action == "PING") picoPing();
     else if (action == "STOP") picoStop();
     else if (action == "STATUS") picoStatus();
+    else if (action == "LAST") {
+        Serial.print("PICO:ALIVE=");
+        Serial.print(picoIsAlive() ? "1" : "0");
+        Serial.print(" TYPE=");
+        Serial.print(picoResponseTypeName(picoLastResponseType()));
+        Serial.print(" DIST=");
+        Serial.print(picoLastDistanceCm());
+        Serial.print(" LINE=");
+        Serial.println(picoLastLineBits());
+        return;
+    }
     else {
         Serial.println("ERR:PARSE");
         return;
