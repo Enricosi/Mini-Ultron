@@ -8,7 +8,7 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
+Last reviewed: 2026-09-18 (amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
 then the Pico's first-ever battery-powered physical test found two bugs. 2026-09-14:
 neck bug fixed and physically confirmed. 2026-09-15: front wheel connector/wiring
 issue resolved by Enrico (hardware-side, no firmware change); M1/M4 then found
@@ -76,9 +76,15 @@ servos, camera.
 - `firmware/esp32/servo_test/` — standalone PCA9685 bench-test sketch (serial
   commands `n/u/l/r/w`). Targets now-removed hardware — historical reference only,
   not runnable against the current ESP32 wiring.
-- `firmware/esp32/i2c_scan/` — standalone I2C bus scanner bench-test sketch. Its
-  original purpose (finding the PCA9685) no longer applies now that it's removed,
-  but the scanner itself is still generically useful for any future I2C device.
+- `firmware/esp32/i2c_scan/` — standalone I2C bus scanner bench-test sketch. Now
+  points at the MPU6050 bus (`Wire.begin(13, 14)`, was 1/48 for the removed PCA9685).
+- `firmware/esp32/audio_out_test/` — standalone I2S output bench sketch (`ESP_I2S`,
+  16 kHz stereo 16-bit, MCLK disabled): 440 Hz soft beep 0.5 s / silence 1.5 s. COMPILES, UPLOADED, **WORKS 2026-09-18** — Enrico confirmed a clean beep, no MCLK needed.
+- `firmware/esp32/inmp441_test/` — standalone INMP441 I2S bench sketch (`ESP_I2S`,
+  16 kHz mono left slot): prints RMS/peak + a volume bar 10x per second. COMPILES,
+  UPLOADED, **WORKS 2026-09-18** — Enrico clapped/talked while Claude read serial (201 samples/20 s): quiet floor rms ~470-1000, speech ~2000-9000, claps peak ~121k-131k (the meter's full scale is ~131k, so claps clip the meter — fine for detection, not for recording levels).
+- `firmware/esp32/mpu6050_test/` — standalone MPU6050 bench sketch (raw `Wire`, no
+  library): prints WHO_AM_I then accel/gyro/temp at 5 Hz. COMPILES, UPLOADED, ran OK 2026-09-18 (WHO_AM_I=0x70, see Pending hardware).
 - `firmware/pico/pico_ultron/` — main Pico locomotion + neck + safety firmware.
   `neck_controller.{h,cpp}` added this session; `Freenove_4WD_Car_For_Pico_W.{h,cpp}`
   extended with the vendored Servo section; `command_parser.cpp` extended with
@@ -425,9 +431,15 @@ sketch is inside the deferred, not-compiled-by-default `waveRightHand()`).
 | — | PCA9685 CH2 | n/a — PCA9685 removed; neck was always on the Freenove shield, not PCA9685 |
 | GPIO17 | UART RX from Pico (GPIO0/TX) | VERIFIED, in use — `PICO_LINK_RX_PIN` in `pico_link_config.h`, wired and physically tested 2026-09-15 |
 | GPIO18 | UART TX to Pico (GPIO1/RX) | VERIFIED, in use — `PICO_LINK_TX_PIN` in `pico_link_config.h`, wired and physically tested 2026-09-15 |
-| TBD | INMP441 I2S (WS/BCLK/SD) | PLANNED — not selected; must avoid GPIO1/2/21/41/42/47/48 and whatever UART/MPU6050 pins get chosen |
-| TBD | Speaker/amplifier interface | PLANNED — architecture not decided; amplifier board is separately powered (own VCC/GND, 3.3V-5V) and drives the speaker itself through one full L or R channel pair, so the ESP32 side is a signal/control interface only — never wire the speaker directly to a GPIO |
-| TBD | MPU6050 I2C (SDA/SCL) | PLANNED — ACTIVE in v1 (firm inclusion), pins not selected yet; do not assign ahead of need. GPIO1/GPIO48 are free again since the PCA9685's removal, but that does not mean they're pre-claimed for the MPU6050 — choose deliberately once mounting is clear |
+| GPIO9 | INMP441 SCK (I2S BCLK) | WIRED by Enrico 2026-09-18 (not yet physically tested) — `inmp441_test` uses it |
+| GPIO10 | INMP441 WS (I2S LRCLK) | WIRED by Enrico 2026-09-18 (not yet physically tested) |
+| GPIO11 | INMP441 SD (I2S data in) | WIRED by Enrico 2026-09-18 (not yet physically tested). INMP441 VDD->3.3V, GND->GND, L/R->GND (left slot) |
+| GPIO9 / GPIO10 | Amp BCK / LCK — **shared** with INMP441 SCK / WS | WIRED by Enrico 2026-09-18 (not yet tested). Intentional: one I2S port, full-duplex, ESP32 = clock master for both mic and amp |
+| GPIO12 | Amp DIN (I2S data out) | WIRED by Enrico 2026-09-18 (not yet tested) — `audio_out_test` uses it |
+| — | Amp SCK/MCLK | NOT CONNECTED — matches Freenove's official ESP32-S3 example (only BCLK/LRC/DOUT configured). GPIO16 is free, not reserved |
+| — | Amp VCC->5V, GND->common GND, speaker->L+/L- | WIRED 2026-09-18. Speaker connects only to the amp board's left-channel output, never to a GPIO |
+| GPIO13 | MPU6050 I2C SDA | WIRED by Enrico 2026-09-18 (not yet physically tested) — `mpu6050_test` and `i2c_scan` use it |
+| GPIO14 | MPU6050 I2C SCL | WIRED by Enrico 2026-09-18 (not yet physically tested) — same as above |
 
 Constructor in use (software SPI, matches wiring above, unchanged):
 ```cpp
@@ -544,15 +556,9 @@ No existing safety behavior was weakened.
 
 - ~~ESP32↔Pico UART wiring~~ — **DONE 2026-09-15**, see "ESP32 ↔ Pico communication
   boundary".
-- INMP441 wiring (blocks microphone work — still fully PLANNED, no code added this
-  session on purpose).
-- Speaker/amplifier wiring and final audio architecture decision (blocks voice
-  output work — still fully PLANNED). Amplifier board's own power rail (3.3V or 5V,
-  module supports either) and which ESP32 pins feed it as signal/control still need
-  deciding; speaker itself only ever connects to the amplifier's channel output, not
-  to the ESP32.
-- MPU6050 wiring and I2C pin selection (blocks accelerometer/gyro integration — ACTIVE
-  in v1 now, but pins not chosen; do not assign ahead of need).
+- ~~INMP441 wiring~~ — **WIRED and WORKING 2026-09-18** (SCK->GPIO9, WS->GPIO10, SD->GPIO11, L/R->GND, VDD->3.3V). `firmware/esp32/inmp441_test/` uploaded; live audio levels confirmed (see the sketch's entry under Repository layout). Not integrated into `hello_ultron`.
+- ~~Speaker/amplifier wiring~~ — **WIRED and WORKING 2026-09-18**, confirmed by Enrico against the official Freenove ESP32-S3 example: the Audio Converter & Amplifier is one board (ES7148 DAC + PAM8403 amp), VCC 3.3-5.0V powered from 5V, speaker on L+/L-, SCK/MCLK not connected. Wiring: BCK->GPIO9, LCK->GPIO10 (shared with the mic's SCK/WS, intentionally), DIN->GPIO12. Bench sketch `firmware/esp32/audio_out_test/` (440 Hz beep, MCLK disabled) compiles, uploaded; Enrico confirmed a clean 440 Hz beep. Any future single sketch using mic + speaker together needs ONE I2S instance in full-duplex on GPIO9/10/11/12, not two separate instances fighting over GPIO9/10.
+- ~~MPU6050 wiring and I2C pin selection~~ — **WIRED and RUNNING 2026-09-18** (VCC->5V, GND->GND, SDA->GPIO13, SCL->GPIO14). Claude uploaded `mpu6050_test` (Enrico explicitly asked) and read its serial output: I2C works, readings are sane at rest (az ~1.05 g, ax/ay ~-0.03 g, gyro ~0 dps, stable). **`WHO_AM_I` = 0x70, not 0x68** — the board is an MPU6500-family part sold as "MPU6050"; accel/gyro register map is compatible so the bench sketch works unchanged, but don't rely on the temperature value/scale, and check the ID if a library ever refuses to init. Motion test 2026-09-18 (Enrico moved it, Claude read serial, 25 s): gyro responded on all 3 axes (peaks ~+120/-60 dps X, +-62 Y, +-23 Z) and returned to ~0 at rest; accel moved (az 0.81-1.28 g, ax/ay ~+-0.2 g) and settled back to az ~1.05. Only gentle tilts were captured — a full 90 deg tilt (an axis reaching ~+-1 g) was not exercised, so gravity redistribution across axes is not fully confirmed. Not integrated into `hello_ultron` yet.
 - Decision on whether the Freenove shield's 5V rail can safely power the ESP32
   subsystem (not yet measured — do not connect until verified).
 

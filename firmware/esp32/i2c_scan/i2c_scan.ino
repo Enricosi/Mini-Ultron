@@ -2,7 +2,7 @@
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(1, 48);
+  Wire.begin(13, 14);  // MPU6050 bus: SDA=GPIO13, SCL=GPIO14
 }
 
 void loop() {
