@@ -49,9 +49,13 @@ class PiperTTS(TTSBackend):
         fx: str = "none",
         pitch_semitones: float = -5.0,
         growl: float = 0.3,
-        drive: float = 2.0,
+        drive: float = 0.8,
+        low_boost: float = 0.3,
+        presence: float = 0.5,
     ):
         self.voice_name = voice
+        self.low_boost = low_boost
+        self.presence = presence
         self.fx = fx  # "monster" | "none"
         self.pitch_semitones = pitch_semitones
         self.growl = growl
@@ -96,7 +100,9 @@ class PiperTTS(TTSBackend):
         audio = np.concatenate([c.audio_float_array for c in chunks]).astype(np.float32)
         audio = resample(audio, source_rate, SAMPLE_RATE)
         if self.fx == "monster":
-            audio = voice_fx.monster(audio, SAMPLE_RATE, self.pitch_semitones, self.growl, self.drive)
+            audio = voice_fx.monster(
+                audio, SAMPLE_RATE, self.pitch_semitones, self.growl, self.drive, self.low_boost, self.presence
+            )
         peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
         if peak > 0:
             audio = audio * (self.peak / peak)  # fixed loudness, independent of the voice

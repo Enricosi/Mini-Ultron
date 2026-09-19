@@ -32,8 +32,18 @@ def _lowpass(x: np.ndarray, sr: int, cutoff_hz: float, taps: int = 129) -> np.nd
     return np.convolve(x, h, mode="same").astype(np.float32)
 
 
-def monster(x: np.ndarray, sr: int, semitones: float = -5.0, growl: float = 0.3, drive: float = 2.0) -> np.ndarray:
-    """Deep, gravelly voice. `x` is float32 mono; returns float32 (not normalized)."""
+def monster(
+    x: np.ndarray,
+    sr: int,
+    semitones: float = -5.0,
+    growl: float = 0.12,
+    drive: float = 0.8,
+    low_boost: float = 0.3,
+    presence: float = 0.5,
+) -> np.ndarray:
+    """Deep voice with a controllable amount of grit. `x` is float32 mono; returns float32
+    (not normalized). Intelligibility comes first: `presence` re-adds the >1.5 kHz band that
+    the pitch drop and the saturation would otherwise bury, so consonants stay clear."""
     y = deepen(x, semitones)
     if len(y) == 0:
         return y
@@ -44,6 +54,8 @@ def monster(x: np.ndarray, sr: int, semitones: float = -5.0, growl: float = 0.3,
         y = np.tanh(drive * y) / np.tanh(drive)
     delay = int(0.012 * sr)  # 12 ms slap-back for body
     thick = y.copy()
-    thick[delay:] += 0.35 * y[:-delay]
-    y = thick + 0.6 * _lowpass(thick, sr, 280.0)  # low-end boost
+    thick[delay:] += 0.25 * y[:-delay]
+    y = thick + low_boost * _lowpass(thick, sr, 280.0)  # low-end boost
+    if presence > 0:  # consonant clarity
+        y = y + presence * (y - _lowpass(y, sr, 1500.0))
     return y.astype(np.float32)

@@ -56,6 +56,8 @@ def build_tts():
         pitch_semitones=settings.TTS_PITCH_SEMITONES,
         growl=settings.TTS_GROWL,
         drive=settings.TTS_DRIVE,
+        low_boost=settings.TTS_LOW_BOOST,
+        presence=settings.TTS_PRESENCE,
     )
 
 

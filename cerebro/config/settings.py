@@ -98,9 +98,11 @@ TTS_LENGTH_SCALE = env_float("TTS_LENGTH_SCALE", 1.0)  # >1 slower/deeper feel
 TTS_PEAK = env_float("TTS_PEAK", 0.35)  # output loudness, fraction of full scale
 # Monster voice (voice_fx.py): deeper, gravelly. TTS_FX=none for Piper's plain voice.
 TTS_FX = env("TTS_FX", "monster")
-TTS_PITCH_SEMITONES = env_float("TTS_PITCH_SEMITONES", -6.0)  # more negative = deeper
-TTS_GROWL = env_float("TTS_GROWL", 0.3)  # 0..0.6 roughness
-TTS_DRIVE = env_float("TTS_DRIVE", 2.0)  # 0 = clean, higher = more distortion
+TTS_PITCH_SEMITONES = env_float("TTS_PITCH_SEMITONES", -5.0)  # more negative = deeper
+TTS_GROWL = env_float("TTS_GROWL", 0.08)  # 0..0.6 roughness
+TTS_DRIVE = env_float("TTS_DRIVE", 0.4)  # 0 = clean, higher = more distortion (>1 hurts clarity)
+TTS_LOW_BOOST = env_float("TTS_LOW_BOOST", 0.3)  # extra bass body
+TTS_PRESENCE = env_float("TTS_PRESENCE", 0.7)  # >1.5 kHz clarity; raise it if consonants are muddy
 
 # --- Behavior policy -----------------------------------------------------------------
 # Movement is OFF until you turn it on: the LLM may *ask* for a movement, but Django
