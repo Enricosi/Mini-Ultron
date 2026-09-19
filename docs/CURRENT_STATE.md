@@ -508,7 +508,7 @@ server round trip 1.3-1.9 s (stt ~0.7-1.0 s, llm ~0.3-0.5 s, tts ~0.15 s) -> rep
 download ~0.25 s -> **speech-end to playback ~1.7-2.1 s**, then the reply plays (4-5 s).
 
 Two real problems were found and fixed the same session:
-- **Windows-style firewall on the dev laptop** (`ufw` active) blocked the ESP32 (`[brain] server
+- **Firewall on the dev laptop** (`ufw` active) blocked the ESP32 (`[brain] server
   ... not reachable (http -1)`) although ping worked. Enrico ran `sudo ufw allow from
   <lan-subnet> to any port 8000 proto tcp` (temporary; remove with `sudo ufw delete allow from
   <lan-subnet> to any port 8000 proto tcp` once CEREBRO runs on the mini server). The mini
