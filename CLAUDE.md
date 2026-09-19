@@ -44,10 +44,12 @@ Responsibilities are separated by controller and must stay that way:
   driver GPIO, or other hardware-shaped data. The LLM output itself must never reach a
   motor or servo directly — it always passes through validation into a known-safe
   command first.
-- **ESP32-S3** is the interaction controller: OLED face, animations, future
-  mic/speaker, Wi-Fi to Django, and (once wired) sending validated locomotion/neck
-  intents to the Pico over UART. It converts abstract intent into deterministic
-  hardware behavior (e.g. `FACE:ANGRY`). It does not drive the drive motors.
+- **ESP32-S3** is the interaction controller: OLED face, animations, mic/speaker, Wi-Fi
+  to Django (plain HTTP, its blocking work lives in FreeRTOS tasks so the face never
+  freezes), and sending validated locomotion/neck intents to the Pico over UART. It
+  converts abstract intent into deterministic hardware behavior (e.g. `FACE:ANGRY`),
+  matching every name from Django against exact vocabularies and ignoring anything
+  unknown. It does not drive the drive motors.
 - **Pico W** is the locomotion / lower-body / local-safety controller. It owns the 4
   DC motors, Mecanum movement, the neck/front servo (physically wired to the
   Freenove shield's own servo header — the earlier ESP32/PCA9685 prototyping of the

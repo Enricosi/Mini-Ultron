@@ -8,7 +8,11 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-18 (CEREBRO v0.1 works end-to-end on real hardware: spoken conversations with the robot verified, ~1.7-2.1 s from end of speech to start of reply audio CEREBRO now runs on the home-lab mini server, not the laptop; IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
+Last reviewed: 2026-09-18, end of day. Today: MPU6050, INMP441 and amp+speaker wired and verified
+and integrated (`audio.{h,cpp}`, `imu.{h,cpp}`); **CEREBRO v0.1 (Django brain) built and deployed on the
+home-lab mini server**; the robot holds spoken conversations with it (~1.7-2.1 s from end of speech to
+start of reply audio); brain-driven movement verified with the wheels in the air and then switched
+OFF again. The Pico firmware was not touched today. Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
 then the Pico's first-ever battery-powered physical test found two bugs. 2026-09-14:
 neck bug fixed and physically confirmed. 2026-09-15: front wheel connector/wiring
 issue resolved by Enrico (hardware-side, no firmware change); M1/M4 then found
@@ -813,41 +817,52 @@ correctly over the link), and the watchdog's `STOPPED:TIMEOUT` message is
 confirmed reaching the ESP32 over UART too. **The ESP32↔Pico link has nothing
 outstanding — status, movement, and safety-timeout visibility are all verified.**
 
-**MOVEMENT TEST IN PROGRESS (2026-09-18, wheels in the air, USB cable, Enrico beside the robot).**
-Both opt-in switches are currently ON for this test: `ULTRON_ALLOW_MOVEMENT=1` in the mini
-server's `~/mini-ultron/cerebro/.env`, and the board runs a build compiled with
-`--build-property "compiler.cpp.extra_flags=-DMINI_ULTRON_BRAIN_MOVEMENT=1"` (a plain build from
-the source tree, where the flag stays 0, turns it off again; `wifi_config.h` was NOT edited).
-**Turn both off after the test unless Enrico decides otherwise.** Before touching hardware the LLM's
-intents were checked with movement still disabled (the server logs `movement X dropped`):
-avanza->FORWARD, gira a la izquierda->ROTATE_LEFT, retrocede->BACKWARD, "de lado"->STRAFE_RIGHT,
+**BRAIN-DRIVEN MOVEMENT TEST 2026-09-18 — PASSED with the wheels in the air; movement is OFF again.**
+Setup: wheels in the air, USB cable, Enrico beside the robot; both opt-in switches were turned ON only
+for the test (server `ULTRON_ALLOW_MOVEMENT=1`; board flashed with a build compiled with
+`--build-property "compiler.cpp.extra_flags=-DMINI_ULTRON_BRAIN_MOVEMENT=1"`, `wifi_config.h` never edited).
+Enrico confirmed "funciona". **State at end of day: server `ULTRON_ALLOW_MOVEMENT=0` (verified via
+`/api/health`), and the board runs the plain source-tree build where `MINI_ULTRON_BRAIN_MOVEMENT` is 0
+(verified: the "intent ignored" path is in the binary, and the boot log shows `movement_allowed=0`).**
+Before touching hardware the LLM's intents were checked with movement disabled (the server logs `movement X
+dropped`): avanza->FORWARD, gira a la izquierda->ROTATE_LEFT, retrocede->BACKWARD, "de lado"->STRAFE_RIGHT,
 conversation/insults/"detente"->NONE.
 - **Bug found on the first hardware run:** `[motion] start` and `burst finished, STOP sent` logged at the
-  same instant. `motionUpdate(now)` used the `now` read at the top of `loop()` while `motionStart()`
-  read `millis()` slightly later, so `now - startMs` wrapped (unsigned) to a huge number and the burst
-  ended immediately (one command, then STOP). Fixed with a signed `elapsedAtLeast()`; the same
-  unsigned pattern exists in `face.cpp`/`imu.cpp` with harmless effect (one animation frame) and was
-  left alone. After the fix the burst lasted exactly 0.80 s (22.95 s -> 23.75 s) and the intents
-  executed (`STRAFE_LEFT`, then `FORWARD`).
-- **STT mishears command words** (real test): "Muévete hacia la izquierda" -> "¡Muera hacia la
-  izquierda!", "Muévete y avanza" -> "¡Motos y adelante!". They happened to map to a similar
-  movement, but a misheard order can move the robot wrongly. Mitigation deployed: Whisper
-  `initial_prompt` with the command vocabulary (`STT_INITIAL_PROMPT`), plus a filter that drops
-  transcripts that merely echo most of that prompt (short real commands like "Avanza" are never
-  dropped; covered by tests). Not yet verified on real speech.
-- Not yet observed by Enrico: whether the wheels' direction/behavior matched each intent. The floor
-  test comes only after that.
+  same instant. `motionUpdate(now)` used the `now` read at the top of `loop()` while `motionStart()` read
+  `millis()` slightly later, so `now - startMs` wrapped (unsigned) to a huge number and the burst ended
+  immediately (one command, then STOP). Fixed with a signed `elapsedAtLeast()`; bursts then lasted exactly
+  0.80 s. The same unsigned pattern exists in `face.cpp`/`imu.cpp` with harmless effect (one animation frame)
+  and was left alone.
+- **STT mishears command words** ("Muévete hacia la izquierda" -> "¡Muera hacia la izquierda!", "Muévete y
+  avanza" -> "¡Motos y adelante!"). A misheard order can move the robot wrongly. Mitigation deployed:
+  Whisper `initial_prompt` with the command vocabulary (`STT_INITIAL_PROMPT`) plus a filter for transcripts
+  that echo most of that prompt (short real commands like "Avanza" are never dropped; unit-tested). After it,
+  Enrico reported the commands work; a systematic measurement of misheard commands was not made.
+- **Not done yet: the floor test.** Preconditions Enrico must confirm each time: robot on the floor with
+  >= 1 m free (there is NO cliff/edge sensor; the ultrasonic only vetoes forward), ESP32 power that
+  doesn't depend on the laptop (or a long USB cable), Enrico beside it with a hand near the Pico's battery
+  switch. Emergency stops: the Pico's battery switch, `MOTION:STOP` over serial, or unplugging the ESP32
+  (the Pico's watchdog stops the car ~0.5 s after the last command). Enrico asked to be warned before any
+  movement test.
 
-**Update 2026-09-18 (late night): CEREBRO runs on the mini server and the robot talks to it.**
-Verified: the server answers over the LAN in ~0.65-0.75 s for text turns (llm ~0.5-0.6 s, tts
-~0.13 s); the ESP32 connects to it (`[brain] server OK ... gpt-oss-120b`). **Not yet verified:**
-a spoken turn against the mini server with the new model, the harsher personality and the monster
-voice on the real speaker. Next steps: (1) Enrico talks to the robot and judges voice/insults;
-tune `TTS_PITCH_SEMITONES`/`TTS_GROWL`/`TTS_DRIVE`, the prompt and reply length; (2) remove the
-leftover `ufw` rule on the laptop; (3) later: barge-in, brain-driven movement (robot on the
-floor, both opt-in flags), local Ollama backend (the server seems to already have an Ollama model
-file in `~`), memory beyond the 4-turn in-RAM history. The power-rail question is being handled
-by Enrico.
+**End-of-day state, 2026-09-18, and next steps.**
+CEREBRO runs on the mini server and the robot talks to it; voice (clean, deep, Thanos-like) and
+personality (a full villain, not just insults) were tuned with Enrico's ears and he says it works well.
+Open items, in rough priority:
+1. **Floor test of brain-driven movement** (see the movement section; needs Enrico's go and setup).
+2. **Leftovers on the dev laptop:** the temporary `ufw` rule for port 8000 is still there (remove:
+   `sudo ufw delete allow from <lan-subnet> to any port 8000 proto tcp`). Enrico's Wi-Fi SSID/password
+   appeared once in the session output when a build failed (local only; changing the Wi-Fi password is
+   optional). `/tmp` voice samples are throwaway.
+3. **Power for the ESP32 + amp on the cart** (Enrico says it's nearly solved; not measured/verified here).
+4. **IMU data is unreliable while audio runs** (I2S clocks corrupt the I2C reads; see its section) —
+   nothing safety-relevant uses it.
+5. **Latency and quality tuning:** speech-end-to-playback is ~1.7-3.1 s (longer for long utterances);
+   an occasional slow Groq call (2-6 s, unexplained; token counts are logged); Groq's plan caps at
+   8000 tokens/minute per model and the personality prompt is ~1300 tokens/turn (fallback 120b->20b exists).
+6. **Later:** barge-in (the mic is deaf while thinking/speaking), local Ollama backend (the server
+   seems to already have a model file in `~`), memory beyond the 4-turn in-RAM history, ESP32 flash is
+   85% of the default partition (pick a bigger app partition before adding OTA/libraries).
 Original notes follow.
 
 **Enrico decided 2026-09-15: next session continues on hardware** (not the
