@@ -28,6 +28,7 @@ def build_llm():
         max_tokens=settings.LLM_MAX_TOKENS,
         structured=settings.LLM_STRUCTURED,
         reasoning_effort=settings.LLM_REASONING_EFFORT,
+        fallback_model=settings.LLM_FALLBACK_MODEL,
     )
 
 
@@ -51,6 +52,10 @@ def build_tts():
         voices_dir=settings.ULTRON_DATA_DIR / "voices",
         length_scale=settings.TTS_LENGTH_SCALE,
         peak=settings.TTS_PEAK,
+        fx=settings.TTS_FX,
+        pitch_semitones=settings.TTS_PITCH_SEMITONES,
+        growl=settings.TTS_GROWL,
+        drive=settings.TTS_DRIVE,
     )
 
 

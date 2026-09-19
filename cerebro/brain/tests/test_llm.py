@@ -133,3 +133,34 @@ class FakeLLMTests(SimpleTestCase):
             llm.complete(MESSAGES)
         self.assertIn("text", json.loads(llm.complete(MESSAGES)))
         self.assertEqual(len(llm.calls), 3)
+
+
+class FallbackModelTests(SimpleTestCase):
+    def test_rate_limit_switches_to_fallback_model_without_waiting(self):
+        models = []
+
+        def handler(request):
+            model = json.loads(request.content)["model"]
+            models.append(model)
+            if model == "openai/gpt-oss-120b":
+                return httpx.Response(429, json={"error": {"message": "TPM limit"}})
+            return httpx.Response(200, json=ok_body())
+
+        llm = make(handler, model="openai/gpt-oss-120b", fallback_model="openai/gpt-oss-20b")
+        self.assertEqual(llm.complete(MESSAGES), REPLY)
+        self.assertEqual(models, ["openai/gpt-oss-120b", "openai/gpt-oss-20b"])  # no same-model retry
+
+    def test_no_fallback_configured_keeps_the_retry_then_fails(self):
+        calls = []
+
+        def handler(request):
+            calls.append(1)
+            return httpx.Response(429, json={"error": {"message": "TPM limit"}})
+
+        with self.assertRaisesRegex(LLMError, "429"):
+            make(handler).complete(MESSAGES)
+        self.assertEqual(len(calls), 2)
+
+    def test_fallback_equal_to_main_model_is_ignored(self):
+        llm = make(lambda r: httpx.Response(200, json=ok_body()), model="m", fallback_model="m")
+        self.assertEqual(llm.fallback_model, "")

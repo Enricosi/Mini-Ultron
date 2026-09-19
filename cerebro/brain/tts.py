@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import voice_fx
 from .audio_utils import SAMPLE_RATE, float_to_pcm16, resample
 
 logger = logging.getLogger("brain.tts")
@@ -39,8 +40,22 @@ class TTSBackend:
 class PiperTTS(TTSBackend):
     name = "piper"
 
-    def __init__(self, voice: str, voices_dir: Path, length_scale: float = 1.0, peak: float = 0.35):
+    def __init__(
+        self,
+        voice: str,
+        voices_dir: Path,
+        length_scale: float = 1.0,
+        peak: float = 0.35,
+        fx: str = "none",
+        pitch_semitones: float = -5.0,
+        growl: float = 0.3,
+        drive: float = 2.0,
+    ):
         self.voice_name = voice
+        self.fx = fx  # "monster" | "none"
+        self.pitch_semitones = pitch_semitones
+        self.growl = growl
+        self.drive = drive
         self.model_path = Path(voices_dir) / f"{voice}.onnx"
         self.length_scale = length_scale
         self.peak = peak
@@ -69,7 +84,10 @@ class PiperTTS(TTSBackend):
         from piper.config import SynthesisConfig
 
         voice = self._load()
-        config = SynthesisConfig(length_scale=self.length_scale)
+        length_scale = self.length_scale
+        if self.fx == "monster":  # the pitch drop slows speech down; pre-compensate
+            length_scale *= voice_fx.pitch_ratio(self.pitch_semitones)
+        config = SynthesisConfig(length_scale=length_scale)
         with self._lock:  # one synthesis at a time
             chunks = list(voice.synthesize(text, syn_config=config))
         if not chunks:
@@ -77,6 +95,8 @@ class PiperTTS(TTSBackend):
         source_rate = chunks[0].sample_rate
         audio = np.concatenate([c.audio_float_array for c in chunks]).astype(np.float32)
         audio = resample(audio, source_rate, SAMPLE_RATE)
+        if self.fx == "monster":
+            audio = voice_fx.monster(audio, SAMPLE_RATE, self.pitch_semitones, self.growl, self.drive)
         peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
         if peak > 0:
             audio = audio * (self.peak / peak)  # fixed loudness, independent of the voice

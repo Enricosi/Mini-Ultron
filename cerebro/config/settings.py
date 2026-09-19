@@ -72,7 +72,9 @@ os.environ.setdefault("HF_HOME", str(ULTRON_DATA_DIR / "hf"))
 # Provider presets: "groq" (default), "ollama" (later, local), "openai_compat"
 # (any OpenAI-style endpoint), "fake" (offline canned replies, for tests/dev).
 LLM_PROVIDER = env("LLM_PROVIDER", "groq")
-LLM_MODEL = env("LLM_MODEL", "openai/gpt-oss-20b")
+LLM_MODEL = env("LLM_MODEL", "openai/gpt-oss-120b")
+# On a 429 (rate limit) retry once with this model, which has its own quota. Empty = off.
+LLM_FALLBACK_MODEL = env("LLM_FALLBACK_MODEL", "openai/gpt-oss-20b")
 LLM_BASE_URL = env("LLM_BASE_URL", "")  # empty = provider default
 LLM_API_KEY = env("LLM_API_KEY", "") or env("GROQ_API_KEY", "")
 LLM_TIMEOUT_S = env_float("LLM_TIMEOUT_S", 20.0)
@@ -94,12 +96,17 @@ TTS_BACKEND = env("TTS_BACKEND", "piper")  # or "fake"
 TTS_VOICE = env("TTS_VOICE", "es_ES-davefx-medium")
 TTS_LENGTH_SCALE = env_float("TTS_LENGTH_SCALE", 1.0)  # >1 slower/deeper feel
 TTS_PEAK = env_float("TTS_PEAK", 0.35)  # output loudness, fraction of full scale
+# Monster voice (voice_fx.py): deeper, gravelly. TTS_FX=none for Piper's plain voice.
+TTS_FX = env("TTS_FX", "monster")
+TTS_PITCH_SEMITONES = env_float("TTS_PITCH_SEMITONES", -6.0)  # more negative = deeper
+TTS_GROWL = env_float("TTS_GROWL", 0.3)  # 0..0.6 roughness
+TTS_DRIVE = env_float("TTS_DRIVE", 2.0)  # 0 = clean, higher = more distortion
 
 # --- Behavior policy -----------------------------------------------------------------
 # Movement is OFF until you turn it on: the LLM may *ask* for a movement, but Django
 # drops it (movement=NONE) unless this is true. Turn on only when the robot is safe to move.
 ULTRON_ALLOW_MOVEMENT = env_bool("ULTRON_ALLOW_MOVEMENT", False)
-ULTRON_HISTORY_TURNS = env_int("ULTRON_HISTORY_TURNS", 6)
+ULTRON_HISTORY_TURNS = env_int("ULTRON_HISTORY_TURNS", 4)  # fewer turns = fewer tokens/minute
 ULTRON_MAX_REPLY_CHARS = env_int("ULTRON_MAX_REPLY_CHARS", 200)
 ULTRON_SAVE_DEBUG_AUDIO = env_bool("ULTRON_SAVE_DEBUG_AUDIO", True)
 ULTRON_PRELOAD = env_bool("ULTRON_PRELOAD", True)  # load STT/TTS models at server start

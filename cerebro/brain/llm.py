@@ -53,10 +53,13 @@ class OpenAICompatLLM(LLMBackend):
         structured: str = "json_schema",
         reasoning_effort: str = "",
         client: httpx.Client | None = None,
+        fallback_model: str = "",
     ):
         preset = PROVIDER_PRESETS.get(provider, PROVIDER_PRESETS["openai_compat"])
         self.name = provider
         self.model = model
+        # Used when the main model hits its rate limit (429): each model has its own quota.
+        self.fallback_model = fallback_model if fallback_model != model else ""
         self.api_key = api_key
         self.base_url = (base_url or preset["base_url"]).rstrip("/")
         self.token_param = preset["token_param"]
@@ -74,9 +77,10 @@ class OpenAICompatLLM(LLMBackend):
     def key_configured(self) -> bool:
         return bool(self.api_key)
 
-    def _payload(self, messages: list[dict], structured: str) -> dict:
+    def _payload(self, messages: list[dict], structured: str, model: str = "") -> dict:
+        model = model or self.model
         payload = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "temperature": self.temperature,
             self.token_param: self.max_tokens,
@@ -88,12 +92,12 @@ class OpenAICompatLLM(LLMBackend):
             }
         elif structured == "json_object":
             payload["response_format"] = {"type": "json_object"}
-        if self.reasoning_effort and "gpt-oss" in self.model:
+        if self.reasoning_effort and "gpt-oss" in model:
             payload["reasoning_effort"] = self.reasoning_effort
             payload["include_reasoning"] = False
         return payload
 
-    def _post(self, payload: dict) -> dict:
+    def _post(self, payload: dict, retry_429: bool = True) -> dict:
         if not self.base_url:
             raise LLMError("LLM_BASE_URL is not configured")
         if self.name == "groq" and not self.api_key:
@@ -109,7 +113,7 @@ class OpenAICompatLLM(LLMBackend):
                 raise LLMError(f"LLM timed out after {self.timeout_s:.0f}s") from None
             except httpx.HTTPError as exc:
                 raise LLMError(f"LLM network error: {type(exc).__name__}") from None
-            if response.status_code == 429 or response.status_code >= 500:
+            if (response.status_code == 429 and retry_429) or response.status_code >= 500:
                 if attempt == 1:
                     logger.warning("LLM HTTP %s, retrying once", response.status_code)
                     time.sleep(0.5)
@@ -122,14 +126,23 @@ class OpenAICompatLLM(LLMBackend):
                 raise LLMError("LLM returned a non-JSON HTTP body") from None
         raise LLMError("LLM request failed")  # pragma: no cover
 
+    def _request(self, messages: list[dict], model: str, retry_429: bool) -> dict:
+        try:
+            return self._post(self._payload(messages, self.structured, model), retry_429)
+        except _HTTPStatusError as exc:
+            if exc.status == 400 and self.structured == "json_schema":
+                logger.warning("LLM rejected json_schema (%s); retrying with json_object", exc.body[:120])
+                return self._post(self._payload(messages, "json_object", model), retry_429)
+            raise
+
     def complete(self, messages: list[dict]) -> str:
         try:
             try:
-                data = self._post(self._payload(messages, self.structured))
+                data = self._request(messages, self.model, retry_429=not self.fallback_model)
             except _HTTPStatusError as exc:
-                if exc.status == 400 and self.structured == "json_schema":
-                    logger.warning("LLM rejected json_schema (%s); retrying with json_object", exc.body[:120])
-                    data = self._post(self._payload(messages, "json_object"))
+                if exc.status == 429 and self.fallback_model:
+                    logger.warning("%s rate-limited (429); using fallback %s", self.model, self.fallback_model)
+                    data = self._request(messages, self.fallback_model, retry_429=True)
                 else:
                     raise
         except _HTTPStatusError as exc:

@@ -55,3 +55,34 @@ class RealModelTests(SimpleTestCase):
         text = services.build_stt().transcribe(au.normalize_peak(quiet)).text.lower()
         self.assertIn("camino", text)
         self.assertIn("animal", text)
+
+
+class VoiceFxTests(SimpleTestCase):
+    def test_deepen_lowers_pitch_by_the_requested_interval(self):
+        from brain import voice_fx
+
+        sr = 16000
+        t = np.arange(sr) / sr
+        tone = np.sin(2 * np.pi * 400 * t).astype(np.float32)
+        low = voice_fx.deepen(tone, -12)  # one octave down
+        freq = np.argmax(np.abs(np.fft.rfft(low))) * sr / len(low)
+        self.assertAlmostEqual(freq, 200, delta=3)
+        self.assertAlmostEqual(len(low) / len(tone), 2.0, delta=0.01)
+
+    def test_monster_is_finite_and_has_more_low_end(self):
+        from brain import voice_fx
+
+        sr = 16000
+        rng = np.random.default_rng(1)
+        speech_like = (np.sin(2 * np.pi * 220 * np.arange(sr) / sr) * rng.uniform(0.3, 1, sr)).astype(np.float32) * 0.3
+        y = voice_fx.monster(speech_like, sr, semitones=-5, growl=0.3, drive=2.0)
+        self.assertTrue(np.all(np.isfinite(y)))
+        self.assertGreater(len(y), len(speech_like))  # slower after the pitch drop
+        self.assertEqual(len(voice_fx.monster(np.zeros(0, dtype=np.float32), sr)), 0)
+
+    def test_fx_none_and_pitch_ratio(self):
+        from brain import voice_fx
+
+        self.assertAlmostEqual(voice_fx.pitch_ratio(-12), 0.5)
+        x = np.ones(100, dtype=np.float32)
+        self.assertTrue(np.array_equal(voice_fx.deepen(x, 0), x))
