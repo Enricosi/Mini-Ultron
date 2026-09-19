@@ -90,6 +90,12 @@ STT_MODEL = env("STT_MODEL", "small")  # tiny/base/small/medium/large-v3...
 STT_LANGUAGE = env("STT_LANGUAGE", "es")  # empty = auto-detect
 STT_COMPUTE_TYPE = env("STT_COMPUTE_TYPE", "int8")
 STT_CPU_THREADS = env_int("STT_CPU_THREADS", 0)  # 0 = library default
+# Biases Whisper toward the robot's command words (a real test misheard "muévete" as "muera").
+# Empty = off. Transcripts that merely echo this prompt are dropped.
+STT_INITIAL_PROMPT = env(
+    "STT_INITIAL_PROMPT",
+    "Ultron, muévete. Avanza. Retrocede. Gira a la izquierda. Gira a la derecha. Detente.",
+)
 
 # --- TTS (Piper, local) -----------------------------------------------------------
 TTS_BACKEND = env("TTS_BACKEND", "piper")  # or "fake"

@@ -86,3 +86,25 @@ class VoiceFxTests(SimpleTestCase):
         self.assertAlmostEqual(voice_fx.pitch_ratio(-12), 0.5)
         x = np.ones(100, dtype=np.float32)
         self.assertTrue(np.array_equal(voice_fx.deepen(x, 0), x))
+
+
+class PromptEchoTests(SimpleTestCase):
+    PROMPT = "Ultron, muévete. Avanza. Retrocede. Gira a la izquierda. Gira a la derecha. Detente."
+
+    def test_long_echo_of_the_prompt_is_detected(self):
+        from brain.stt import is_prompt_echo
+
+        for echo in (self.PROMPT, "Ultron, muévete. Avanza. Retrocede. Gira a la izquierda. Gira a la derecha."):
+            self.assertTrue(is_prompt_echo(echo, self.PROMPT), echo)
+
+    def test_short_real_commands_are_never_dropped(self):
+        from brain.stt import is_prompt_echo
+
+        for cmd in ("Avanza.", "Detente", "Gira a la izquierda.", "Ultron, muévete.", "Retrocede", "Gira a la derecha"):
+            self.assertFalse(is_prompt_echo(cmd, self.PROMPT), cmd)
+
+    def test_real_speech_is_not_an_echo(self):
+        from brain.stt import is_prompt_echo
+
+        for text in ("Ultron, avanza un poco y luego retrocede", "Hola, ¿cómo estás?", ""):
+            self.assertFalse(is_prompt_echo(text, self.PROMPT), text)

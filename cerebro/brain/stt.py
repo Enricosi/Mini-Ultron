@@ -22,6 +22,20 @@ _HALLUCINATIONS = (
 )
 
 
+def _plain(text: str) -> str:
+    return re.sub(r"[\W_]+", " ", text.lower()).strip()
+
+
+def is_prompt_echo(text: str, prompt: str) -> bool:
+    """Whisper sometimes parrots (most of) its initial_prompt when it hears noise: drop those.
+    Only LONG overlaps count: short real commands such as "Avanza" or "Gira a la izquierda"
+    are substrings of the prompt and must never be dropped."""
+    t, p = _plain(text), _plain(prompt)
+    if not t or not p or len(t.split()) < 0.6 * len(p.split()):
+        return False
+    return t in p or p in t
+
+
 def is_hallucination(text: str) -> bool:
     t = text.strip().lower()
     if len(re.sub(r"[\W_]+", "", t)) < 2:
@@ -49,7 +63,16 @@ class STTBackend:
 class FasterWhisperSTT(STTBackend):
     name = "faster_whisper"
 
-    def __init__(self, model: str, language: str, compute_type: str, cpu_threads: int, download_root: str):
+    def __init__(
+        self,
+        model: str,
+        language: str,
+        compute_type: str,
+        cpu_threads: int,
+        download_root: str,
+        initial_prompt: str = "",
+    ):
+        self.initial_prompt = initial_prompt
         self.model_name = model
         self.language = language or None
         self.compute_type = compute_type
@@ -87,14 +110,19 @@ class FasterWhisperSTT(STTBackend):
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
                 condition_on_previous_text=False,
+                initial_prompt=self.initial_prompt or None,
             )
             kept = [
                 s.text.strip()
                 for s in segments
                 if not (s.no_speech_prob > 0.7 and s.avg_logprob < -1.0)
             ]
+        text = " ".join(t for t in kept if t).strip()
+        if self.initial_prompt and is_prompt_echo(text, self.initial_prompt):
+            logger.info("dropping transcript that just echoes the STT prompt: %r", text)
+            text = ""
         return Transcript(
-            text=" ".join(t for t in kept if t).strip(),
+            text=text,
             language=info.language,
             audio_s=len(audio) / 16000,
         )

@@ -8,6 +8,13 @@ static const unsigned long BURST_MS = 800;
 static const unsigned long RESEND_MS = 200;        // must stay well under the Pico's 500 ms watchdog
 static const unsigned long CHECK_AFTER_MS = 300;   // ignore stale Pico responses at the start
 
+// `now` comes from the start of the loop iteration while motionStart() reads millis() a bit
+// later, so `now` can be slightly BEHIND startMs. An unsigned subtraction would then wrap to a
+// huge number and end the burst instantly (found on the first hardware test, 2026-09-18).
+static bool elapsedAtLeast(unsigned long now, unsigned long since, unsigned long ms) {
+  return (long)(now - since) >= (long)ms;
+}
+
 static MotionIntent current = MOTION_NONE;
 static unsigned long startMs = 0;
 static unsigned long lastSendMs = 0;
@@ -62,20 +69,20 @@ void motionUpdate(unsigned long now) {
   if (current == MOTION_NONE) return;
 
   PicoResponseType last = picoLastResponseType();
-  bool pastStart = now - startMs > CHECK_AFTER_MS;
+  bool pastStart = elapsedAtLeast(now, startMs, CHECK_AFTER_MS);
   if (pastStart && (last == PICO_RESP_OBSTACLE || last == PICO_RESP_STOPPED_TIMEOUT)) {
     current = MOTION_NONE;
     picoStop();
     Serial.println("[motion] Pico vetoed/stopped, motion ended");
     return;
   }
-  if (now - startMs >= BURST_MS) {
+  if (elapsedAtLeast(now, startMs, BURST_MS)) {
     current = MOTION_NONE;
     picoStop();
     Serial.println("[motion] burst finished, STOP sent");
     return;
   }
-  if (now - lastSendMs >= RESEND_MS) {
+  if (elapsedAtLeast(now, lastSendMs, RESEND_MS)) {
     lastSendMs = now;
     sendCurrent();
   }

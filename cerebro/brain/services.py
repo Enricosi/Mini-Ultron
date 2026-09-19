@@ -41,6 +41,7 @@ def build_stt():
         compute_type=settings.STT_COMPUTE_TYPE,
         cpu_threads=settings.STT_CPU_THREADS,
         download_root=str(settings.ULTRON_DATA_DIR / "whisper"),
+        initial_prompt=settings.STT_INITIAL_PROMPT,
     )
 
 

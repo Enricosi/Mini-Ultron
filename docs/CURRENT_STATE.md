@@ -804,6 +804,31 @@ correctly over the link), and the watchdog's `STOPPED:TIMEOUT` message is
 confirmed reaching the ESP32 over UART too. **The ESP32↔Pico link has nothing
 outstanding — status, movement, and safety-timeout visibility are all verified.**
 
+**MOVEMENT TEST IN PROGRESS (2026-09-18, wheels in the air, USB cable, Enrico beside the robot).**
+Both opt-in switches are currently ON for this test: `ULTRON_ALLOW_MOVEMENT=1` in the mini
+server's `~/mini-ultron/cerebro/.env`, and the board runs a build compiled with
+`--build-property "compiler.cpp.extra_flags=-DMINI_ULTRON_BRAIN_MOVEMENT=1"` (a plain build from
+the source tree, where the flag stays 0, turns it off again; `wifi_config.h` was NOT edited).
+**Turn both off after the test unless Enrico decides otherwise.** Before touching hardware the LLM's
+intents were checked with movement still disabled (the server logs `movement X dropped`):
+avanza->FORWARD, gira a la izquierda->ROTATE_LEFT, retrocede->BACKWARD, "de lado"->STRAFE_RIGHT,
+conversation/insults/"detente"->NONE.
+- **Bug found on the first hardware run:** `[motion] start` and `burst finished, STOP sent` logged at the
+  same instant. `motionUpdate(now)` used the `now` read at the top of `loop()` while `motionStart()`
+  read `millis()` slightly later, so `now - startMs` wrapped (unsigned) to a huge number and the burst
+  ended immediately (one command, then STOP). Fixed with a signed `elapsedAtLeast()`; the same
+  unsigned pattern exists in `face.cpp`/`imu.cpp` with harmless effect (one animation frame) and was
+  left alone. After the fix the burst lasted exactly 0.80 s (22.95 s -> 23.75 s) and the intents
+  executed (`STRAFE_LEFT`, then `FORWARD`).
+- **STT mishears command words** (real test): "Muévete hacia la izquierda" -> "¡Muera hacia la
+  izquierda!", "Muévete y avanza" -> "¡Motos y adelante!". They happened to map to a similar
+  movement, but a misheard order can move the robot wrongly. Mitigation deployed: Whisper
+  `initial_prompt` with the command vocabulary (`STT_INITIAL_PROMPT`), plus a filter that drops
+  transcripts that merely echo most of that prompt (short real commands like "Avanza" are never
+  dropped; covered by tests). Not yet verified on real speech.
+- Not yet observed by Enrico: whether the wheels' direction/behavior matched each intent. The floor
+  test comes only after that.
+
 **Update 2026-09-18 (late night): CEREBRO runs on the mini server and the robot talks to it.**
 Verified: the server answers over the LAN in ~0.65-0.75 s for text turns (llm ~0.5-0.6 s, tts
 ~0.13 s); the ESP32 connects to it (`[brain] server OK ... gpt-oss-120b`). **Not yet verified:**
