@@ -24,10 +24,12 @@ static const int MIN_STOP_THRESHOLD = 800;
 static const int HOLDOFF_MS = 300;      // ignore mic this long after playback
 
 // --- Capture / playback ---
-static const int AUDIO_CAPTURE_SECONDS = 4;
-static const int CAPTURE_SAMPLES = SAMPLE_RATE * AUDIO_CAPTURE_SECONDS;
-static const int PLAYBACK_GAIN_X10 = 30;   // x3, picked by ear (see CURRENT_STATE.md)
-static const int16_t PLAYBACK_LIMIT = 12000;
+static const int MAX_UTTERANCE_SAMPLES = MAX_FRAMES * FRAME_SAMPLES;  // 12 s = 384 KB, PSRAM
+static const int FALLBACK_CAPTURE_SAMPLES = SAMPLE_RATE * 4;           // no PSRAM: 4 s of internal RAM
+static const int REPLAY_GAIN_X10 = 30;      // x3 for the quiet mic capture, picked by ear
+static const int16_t REPLAY_LIMIT = 12000;
+static const int PCM_GAIN_X10 = 10;         // CEREBRO's TTS is already loudness-normalized
+static const int16_t PCM_LIMIT = 16000;     // hard ceiling for anything sent to the amp
 static const int PLAY_CHUNK_FRAMES = 256;
 
 struct Frame {
@@ -35,14 +37,15 @@ struct Frame {
   int32_t right;
 };
 
-enum PlayRequest { PLAY_NONE, PLAY_BEEP, PLAY_REPLAY };
+enum PlayRequest { PLAY_NONE, PLAY_BEEP, PLAY_BUFFER };
 enum DetectorState { DET_IDLE, DET_SPEECH };
 
 static I2SClass i2s;
 static TaskHandle_t audioTaskHandle = nullptr;
 
 // Big buffers are static (task stack stays small).
-static int16_t capture[CAPTURE_SAMPLES];
+static int16_t *capture = nullptr;  // allocated in audioInit (PSRAM if available)
+static int captureCapacity = 0;
 static int16_t preroll[PREROLL_FRAMES * FRAME_SAMPLES];
 static Frame rxFrames[FRAME_SAMPLES];
 static Frame txFrames[PLAY_CHUNK_FRAMES];
@@ -59,6 +62,12 @@ static volatile uint32_t st_utterances = 0;
 static volatile uint32_t st_lastUtteranceMs = 0;
 static volatile uint32_t st_capturedSamples = 0;
 static volatile int playRequest = PLAY_NONE;
+static const int16_t *playPtr = nullptr;
+static uint32_t playLen = 0;
+static int playGainX10 = 10;
+static int16_t playLimit = 16000;
+static volatile bool st_deaf = false;             // ignore the mic (thinking / speaking)
+static volatile bool deafAfterUtterance = false;  // go deaf the instant an utterance ends
 
 // Tiny single-producer (task) / single-consumer (main loop) event queue.
 static const int EVENT_QUEUE_SIZE = 8;
@@ -98,11 +107,11 @@ static void doPlayback(int request) {
     for (int n = 0; n < SAMPLE_RATE / 5; n++) {  // 200 ms, 880 Hz
       writeSample((int32_t)(3000 * sinf(2.0f * PI * 880.0f * n / SAMPLE_RATE)), fill);
     }
-  } else if (request == PLAY_REPLAY) {
-    uint32_t total = st_capturedSamples;
-    for (uint32_t n = 0; n < total; n++) {
-      int32_t v = ((int32_t)capture[n] * PLAYBACK_GAIN_X10) / 10;
-      writeSample(constrain(v, -PLAYBACK_LIMIT, PLAYBACK_LIMIT), fill);
+  } else if (request == PLAY_BUFFER) {
+    const int16_t *pcm = playPtr;
+    for (uint32_t n = 0; n < playLen; n++) {
+      int32_t v = ((int32_t)pcm[n] * playGainX10) / 10;
+      writeSample(constrain(v, -(int32_t)playLimit, (int32_t)playLimit), fill);
     }
   }
   flushTx(fill);
@@ -145,7 +154,11 @@ static void audioTask(void *) {
 
     size_t got = i2s.readBytes((char *)rxFrames, sizeof(rxFrames));
     if (got < sizeof(rxFrames)) continue;
-    if ((int32_t)(millis() - holdoffUntil) < 0) continue;  // deaf while/just after playing
+    if (st_deaf || (int32_t)(millis() - holdoffUntil) < 0) {  // deaf: thinking/speaking/just played
+      aboveCount = 0;
+      prerollFilled = 0;
+      continue;
+    }
 
     // DC-removed 18-bit-ish samples (same units as inmp441_test) and their RMS.
     int64_t sum = 0;
@@ -210,7 +223,7 @@ static void audioTask(void *) {
         pushEvent(AUDIO_EVENT_SPEECH_START);
       }
     } else {  // DET_SPEECH
-      if (capLen + FRAME_SAMPLES <= CAPTURE_SAMPLES) {
+      if (capLen + FRAME_SAMPLES <= captureCapacity) {
         memcpy(&capture[capLen], frame16, sizeof(frame16));
         capLen += FRAME_SAMPLES;
       }
@@ -236,6 +249,7 @@ static void audioTask(void *) {
           st_capturedSamples = (uint32_t)min(capLen, voicedEndLen + KEEP_TAIL_FRAMES * FRAME_SAMPLES);
           st_lastUtteranceMs = millis() - speechStartMs;
           st_utterances = st_utterances + 1;
+          if (deafAfterUtterance) st_deaf = true;  // protect the capture buffer while CEREBRO uses it
           pushEvent(AUDIO_EVENT_SPEECH_END);
         }
       }
@@ -246,6 +260,17 @@ static void audioTask(void *) {
 // ------------------------------------------------------------------ public
 
 void audioInit() {
+  capture = (int16_t *)ps_malloc(MAX_UTTERANCE_SAMPLES * sizeof(int16_t));
+  captureCapacity = MAX_UTTERANCE_SAMPLES;
+  if (!capture) {  // build without PSRAM=opi, or PSRAM failed
+    capture = (int16_t *)malloc(FALLBACK_CAPTURE_SAMPLES * sizeof(int16_t));
+    captureCapacity = FALLBACK_CAPTURE_SAMPLES;
+    Serial.println("[audio] no PSRAM: utterances limited to 4 s (build with PSRAM=opi)");
+  }
+  if (!capture) {
+    Serial.println("[audio] capture buffer allocation failed - audio disabled");
+    return;
+  }
   // Pins: BCLK, WS, DOUT, DIN, MCLK (not connected)
   i2s.setPins(I2S_BCLK, I2S_WS, I2S_DOUT, I2S_DIN, -1);
   if (!i2s.begin(I2S_MODE_STD, SAMPLE_RATE, I2S_DATA_BIT_WIDTH_32BIT,
@@ -288,8 +313,33 @@ bool audioBeep() {
   return true;
 }
 
-bool audioReplayLastUtterance() {
-  if (!audioTaskHandle || audioIsPlaying() || st_capturedSamples == 0) return false;
-  playRequest = PLAY_REPLAY;
+static bool requestBuffer(const int16_t *pcm, uint32_t samples, int gainX10, int16_t limit) {
+  if (!audioTaskHandle || audioIsPlaying() || !pcm || samples == 0) return false;
+  playPtr = pcm;
+  playLen = samples;
+  playGainX10 = gainX10;
+  playLimit = limit;
+  playRequest = PLAY_BUFFER;  // set last: the task reads the fields above after seeing this
   return true;
+}
+
+bool audioReplayLastUtterance() {
+  return requestBuffer(capture, st_capturedSamples, REPLAY_GAIN_X10, REPLAY_LIMIT);
+}
+
+bool audioPlayPcm16(const int16_t *pcm, size_t samples) {
+  return requestBuffer(pcm, (uint32_t)samples, PCM_GAIN_X10, PCM_LIMIT);
+}
+
+const int16_t *audioCapturedPcm(size_t *samples) {
+  *samples = st_capturedSamples;
+  return capture;
+}
+
+void audioSetDeaf(bool deaf) {
+  st_deaf = deaf;
+}
+
+void audioDeafAfterUtterance(bool enable) {
+  deafAfterUtterance = enable;
 }

@@ -20,11 +20,11 @@ robot firmware must not block.
 ## High-level architecture
 
 ```
-Django / home-lab  (high-level brain)
-        | intent (text/JSON), never raw hardware values
+Django / home-lab mini server  (high-level brain: CEREBRO)
+        | Wi-Fi, plain HTTP: audio in, JSON intent + audio out; never raw hardware values
         v
 ESP32-S3            (upper body: face, voice, network)
-        | UART (link not wired yet — see CURRENT_STATE.md)
+        | UART (see CURRENT_STATE.md)
         v
 Raspberry Pi Pico W (lower body: locomotion + local safety)
         v
@@ -33,6 +33,10 @@ Freenove car shield / 4 DC motors / neck servo / ultrasonic / line tracker
 
 Responsibilities are separated by controller and must stay that way:
 
+- **Deployment rule:** the brain (Django, STT, TTS, LLM client) runs on Enrico's home-lab
+  mini server, never on the development laptop. The laptop is only for editing/testing and must
+  never be a runtime dependency: Mini-Ultron has to work with the laptop off. Keep config in
+  environment variables (`cerebro/.env`, gitignored) and secrets out of Git.
 - **Django** owns conversation, personality, persistent memory, LLM provider
   abstraction, STT/TTS orchestration, and validating LLM output into a bounded set of
   high-level intents (e.g. `{"text": "...", "face": "ANGRY", "gesture": "NONE",
@@ -67,6 +71,10 @@ while moving must always resolve to STOP, never to continued motion.
 - The ultrasonic sensor can veto an unsafe forward command regardless of what
   requested it.
 - No autonomous behavior may cause harm; no uncontrolled movement after comms loss.
+- Movement intents from the brain are opt-in at two independent levels (Django
+  `ULTRON_ALLOW_MOVEMENT`, firmware `MINI_ULTRON_BRAIN_MOVEMENT`), both off by default. The
+  firmware turns an abstract intent into a fixed, slow, time-bounded burst; the LLM never
+  supplies speeds or durations.
 - LLM/Django output is intent only. It is never translated directly into raw PWM,
   servo microseconds, or arbitrary GPIO control — it must pass through a firmware
   layer that only knows a fixed vocabulary of safe commands.

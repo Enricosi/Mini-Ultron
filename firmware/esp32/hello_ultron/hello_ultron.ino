@@ -3,7 +3,9 @@
 
   Owns the OLED face (face.h), the deterministic link to the Pico W
   locomotion/neck/safety controller (pico_link.h), mic + speaker audio
-  with continuous voice detection (audio.h), the IMU (imu.h), and a development-
+  with continuous voice detection (audio.h), the Wi-Fi/HTTP link to the
+  CEREBRO brain server (brain_link.h) and the conversation flow that ties
+  them together (conversation.h), the IMU (imu.h), and a development-
   only debug console (debug_console.h). Arm/PCA9685 gestures are
   preserved but deferred from v1 (arm_gestures.h).
 
@@ -12,42 +14,12 @@
 #include "face.h"
 #include "pico_link.h"
 #include "audio.h"
+#include "brain_link.h"
+#include "conversation.h"
 #include "imu.h"
+#include "motion.h"
 #include "arm_gestures.h"
 #include "debug_console.h"
-
-// Temporary face reactions to audio until Django drives the face: LISTENING while
-// an utterance is being heard, SPEAKING while playing; restores the previous face.
-static FaceState faceBeforeAudio = FACE_IDLE;
-static bool wasPlaying = false;
-
-static void audioFaceGlue() {
-    AudioEvent e;
-    while ((e = audioPollEvent()) != AUDIO_EVENT_NONE) {
-        if (e == AUDIO_EVENT_SPEECH_START) {
-            faceBeforeAudio = getFace();
-            setFace(FACE_LISTENING);
-            Serial.println("[audio] speech start");
-        } else if (e == AUDIO_EVENT_SPEECH_END) {
-            setFace(faceBeforeAudio);
-            AudioStatus a = audioGetStatus();
-            Serial.printf("[audio] speech end: %u ms, %u samples captured\n",
-                          (unsigned)a.lastUtteranceMs, (unsigned)a.capturedSamples);
-        } else if (e == AUDIO_EVENT_SPEECH_ABORT) {
-            setFace(faceBeforeAudio);
-            Serial.println("[audio] speech ignored (too short/interrupted)");
-        }
-    }
-
-    bool playing = audioIsPlaying();
-    if (playing && !wasPlaying) {
-        faceBeforeAudio = getFace();
-        setFace(FACE_SPEAKING);
-    } else if (!playing && wasPlaying) {
-        setFace(faceBeforeAudio);
-    }
-    wasPlaying = playing;
-}
 
 void setup() {
     Serial.begin(115200);
@@ -56,6 +28,8 @@ void setup() {
     faceInit();
     picoLinkInit();
     audioInit();
+    brainInit();
+    conversationInit();
     imuInit();
     debugConsoleInit();
 
@@ -71,7 +45,8 @@ void loop() {
 
     debugConsolePoll();
     picoLinkPoll();
-    audioFaceGlue();
+    conversationUpdate(now);
+    motionUpdate(now);
     imuUpdate(now);
     faceUpdate(now);
 }

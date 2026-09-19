@@ -46,4 +46,17 @@ bool audioIsPlaying();
 bool audioBeep();                 // short test beep; false if busy
 bool audioReplayLastUtterance();  // false if none captured or busy
 
+// --- CEREBRO integration ---
+// Last valid utterance: 16 kHz mono int16, up to 12 s (PSRAM). Valid until the next
+// utterance starts being captured; audioDeafAfterUtterance() protects it meanwhile.
+const int16_t *audioCapturedPcm(size_t *samples);
+// Play a reply (16 kHz mono int16, e.g. CEREBRO's TTS). The buffer must stay valid
+// until audioIsPlaying() is false. False if busy.
+bool audioPlayPcm16(const int16_t *pcm, size_t samples);
+// Ignore the mic (robot is thinking/speaking). No utterance is detected while deaf.
+void audioSetDeaf(bool deaf);
+// If enabled, the audio task itself goes deaf the moment an utterance ends, so a new
+// one can never overwrite the capture buffer while it is being sent.
+void audioDeafAfterUtterance(bool enable);
+
 #endif

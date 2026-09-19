@@ -5,6 +5,8 @@
 #include "arm_gestures.h"
 #include "audio.h"
 #include "imu.h"
+#include "brain_link.h"
+#include "motion.h"
 
 static char buffer[64];
 static uint8_t len = 0;
@@ -18,6 +20,7 @@ static void printHelp() {
         "  MOVE:FWD:<0-100> | MOVE:BACK:<0-100> | MOVE:LEFT:<0-100> | MOVE:RIGHT:<0-100>\n"
         "  ROTATE:L:<0-100> | ROTATE:R:<0-100>\n"
         "  AUDIO:STATUS | AUDIO:BEEP | AUDIO:REPLAY (replays the last detected utterance)\n"
+        "  BRAIN:STATUS (wifi / CEREBRO link) | MOTION:STOP\n"
         "  IMU:STATUS | IMU:CAL (keep the robot still for ~1 s)\n"
         "  ARMS:NEUTRAL|UP|LEFT|RIGHT|WAVE (deferred in v1, see arm_gestures.h)\n"
         "  HELP"));
@@ -108,6 +111,21 @@ static void handleAudio(const String &action) {
     Serial.println(ok ? "OK" : "ERR:BUSY_OR_NOTHING_CAPTURED");
 }
 
+static void handleBrain(const String &action) {
+    if (action == "STATUS") brainPrintStatus();
+    else Serial.println("ERR:PARSE");
+}
+
+static void handleMotion(const String &action) {
+    if (action == "STOP") {
+        motionAbort();
+        picoStop();
+        Serial.println("OK");
+    } else {
+        Serial.println("ERR:PARSE");
+    }
+}
+
 static void handleImu(const String &action) {
     if (action == "STATUS") {
         ImuData d = imuGetData();
@@ -192,6 +210,8 @@ static void handleLine(const String &line) {
     if (verb == "PICO") { handlePico(rest); return; }
     if (verb == "NECK") { handleNeck(rest); return; }
     if (verb == "AUDIO") { handleAudio(rest); return; }
+    if (verb == "BRAIN") { handleBrain(rest); return; }
+    if (verb == "MOTION") { handleMotion(rest); return; }
     if (verb == "IMU") { handleImu(rest); return; }
     if (verb == "ARMS") { handleArms(rest); return; }
     if (verb == "MOVE" || verb == "ROTATE") { handleMoveOrRotate(verb, rest); return; }

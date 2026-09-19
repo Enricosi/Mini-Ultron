@@ -8,7 +8,7 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-18 (IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
+Last reviewed: 2026-09-18 (CEREBRO v0.1 backend built and verified with real Groq/Whisper/Piper; ESP32 brain-link firmware written and compiles, NOT yet run against the server — waiting on Wi-Fi credentials; IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
 then the Pico's first-ever battery-powered physical test found two bugs. 2026-09-14:
 neck bug fixed and physically confirmed. 2026-09-15: front wheel connector/wiring
 issue resolved by Enrico (hardware-side, no firmware change); M1/M4 then found
@@ -74,6 +74,9 @@ servos, camera.
   `audioFaceGlue()`), `face.{h,cpp}`, `pico_link.{h,cpp}` + `pico_link_config.h`,
   `arm_gestures.{h,cpp}`, `debug_console.{h,cpp}`, **`audio.{h,cpp}`** and **`imu.{h,cpp}`**
   (new 2026-09-18, see their sections below).
+- `cerebro/` — **CEREBRO, the Django brain (new 2026-09-18)**. Runs on the home-lab mini
+  server, not the laptop. See "CEREBRO" below and `cerebro/README.md`. `deploy/cerebro.service`
+  is a systemd unit for the server.
 - `firmware/esp32/servo_test/` — standalone PCA9685 bench-test sketch (serial
   commands `n/u/l/r/w`). Targets now-removed hardware — historical reference only,
   not runnable against the current ESP32 wiring.
@@ -296,6 +299,17 @@ compiled and uploaded with `CDCOnBoot=cdc` explicit:
 arduino-cli compile --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc" .
 arduino-cli upload -p /dev/ttyACM0 --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc" .
 ```
+**Since 2026-09-18 also add `PSRAM=opi`** (the board has 8 MB OPI PSRAM, verified with a
+probe sketch: `psramFound()=1`, 8388608 bytes, a 1 MB `ps_malloc` + write OK). The full
+commands are now:
+```bash
+arduino-cli compile --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=opi" hello_ultron
+arduino-cli upload -p /dev/ttyACM0 --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=opi" hello_ultron
+```
+Without `PSRAM=opi` the firmware still runs but utterances are capped at 4 s and the
+CEREBRO link disables itself (no reply buffer). Flash with Wi-Fi/HTTP is ~85% of the
+default partition (1115083 of 1310720 bytes) — fine now, but choose a larger app
+partition before adding OTA or more libraries.
 If using the Arduino IDE instead: `Tools > USB CDC On Boot > Enabled`. VERIFIED
 2026-09-13 — with this flag set, the debug console responded correctly to all
 `FACE:*`, `PICO:*`, `NECK:*`, `MOVE:*`, `ARMS:*` commands over USB.
@@ -392,6 +406,11 @@ verification only — streaming to Django is future work and will replace this.
 `LISTENING` while an utterance is heard, `SPEAKING` while playing, restoring the
 previous face afterward. Debug console: `AUDIO:STATUS`, `AUDIO:BEEP`, `AUDIO:REPLAY`.
 
+**2026-09-18 (CEREBRO integration):** the capture buffer moved to PSRAM and now holds the full
+12 s utterance cap (was 4 s); added `audioCapturedPcm()`, `audioPlayPcm16()` (plays CEREBRO's TTS
+reply, hard ceiling +-16000), `audioSetDeaf()` and `audioDeafAfterUtterance()`. `AUDIO:REPLAY`
+still works. Verified booting on the board with PSRAM (no fallback message).
+
 **IMPLEMENTED, COMPILES, UPLOADED, PHYSICALLY TESTED 2026-09-18** (Enrico spoke, clapped,
 paused mid-sentence; Claude read serial): calibrates on boot (floor ~360-830, adapts down
 to ~360-400), detects phrases of 2-6 s as single utterances (a mid-sentence pause did
@@ -478,16 +497,50 @@ safety concern about debug-command typos. `MOVE`/`ROTATE` here only ever *build*
 Pico command via `pico_link` — with no UART connected yet, they cannot physically
 move anything even if invoked. IMPLEMENTED, COMPILES.
 
+### `brain_link.{h,cpp}`, `conversation.{h,cpp}`, `motion.{h,cpp}`, `brain_config.h` — CEREBRO on the ESP32 (new 2026-09-18)
+
+**IMPLEMENTED, COMPILES (both with and without Wi-Fi config), NOT YET RUN against the server** —
+the only missing input is Enrico's Wi-Fi credentials (`wifi_config.h`).
+
+- `brain_config.h` + `wifi_config.example.h`: `wifi_config.h` (SSID, password, `CEREBRO_HOST`,
+  `CEREBRO_PORT`, optional `MINI_ULTRON_BRAIN_MOVEMENT`) is **gitignored**. Without it the firmware
+  builds and behaves as before and `brain_link` just logs that it is disabled (the project's
+  "gate it, harmless fallback" pattern). The disabled build was uploaded and verified on the
+  board 2026-09-18.
+- `brain_link`: FreeRTOS task (core 0, low priority) so the face/UART keep running while the
+  server thinks. On Wi-Fi connect it does `GET /api/health` and logs whether the server is reachable
+  and how it is configured. Per utterance: `POST /api/converse` (PCM16 mono 16 kHz from the PSRAM
+  capture buffer, `X-Session-Id: mini-ultron`, 30 s timeout) -> parse JSON (ArduinoJson 7,
+  installed via arduino-cli) -> `GET` the reply audio into a 640 KB PSRAM buffer (20 s max).
+- `conversation`: main-loop state machine `IDLE -> LISTENING -> THINKING -> SPEAKING -> HOLD`.
+  `LISTENING` face while the user talks, `THINKING` while the server works, then the face CEREBRO
+  chose (default `SPEAKING`; `LISTENING`/`THINKING` are never selectable by the LLM) during the reply
+  and 1.5 s after, then back. The mic is **deaf** from the end of an utterance until HOLD ends
+  (the audio task itself goes deaf the instant an utterance ends, so the capture buffer can't be
+  overwritten while it is uploaded). Prints one `[turn]` timing line per conversation. All names
+  from the server are matched against exact vocabularies; unknown names are ignored. Neck intents map to
+  `picoNeckCenter/Left/Right`. A failed turn shows `GLITCH`.
+- `motion`: abstract movement intent -> a fixed, bounded burst (speed 40, 800 ms, command re-sent
+  every 200 ms, well under the Pico's 500 ms watchdog, then `STOP`); ends immediately on `OBSTACLE`
+  or `STOPPED_TIMEOUT` from the Pico; aborted when the user starts speaking. **Compiled out by
+  default (`MINI_ULTRON_BRAIN_MOVEMENT 0`: intents are logged and ignored)** — Enrico's rule:
+  the robot currently sits on a laptop and must not move. Django also drops movement unless
+  `ULTRON_ALLOW_MOVEMENT=1`. Two independent opt-ins, and the Pico still owns watchdog/veto/STOP.
+- Debug console additions: `BRAIN:STATUS`, `MOTION:STOP`.
+
 ### `hello_ultron.ino` — now just wiring
 
 ```cpp
-setup(): Serial.begin(115200) → faceInit() → picoLinkInit() → debugConsoleInit()
-         → (armsInit() only if MINI_ULTRON_ENABLE_ARMS)
-loop():  debugConsolePoll() → picoLinkPoll() → faceUpdate(now)
+setup(): Serial.begin(115200) -> faceInit() -> picoLinkInit() -> audioInit() -> brainInit()
+         -> conversationInit() -> imuInit() -> debugConsoleInit()
+         -> (armsInit() only if MINI_ULTRON_ENABLE_ARMS)
+loop():  debugConsolePoll() -> picoLinkPoll() -> conversationUpdate(now) -> motionUpdate(now)
+         -> imuUpdate(now) -> faceUpdate(now)
 ```
 
 No blocking calls in `loop()` itself (the only remaining `delay()` in the whole
-sketch is inside the deferred, not-compiled-by-default `waveRightHand()`).
+sketch is inside the deferred, not-compiled-by-default `waveRightHand()`). Blocking
+work (I2S, HTTP) lives in the audio and brain FreeRTOS tasks.
 
 ## ESP32-S3 pin allocation
 
@@ -539,15 +592,55 @@ Adafruit_SSD1331 display = Adafruit_SSD1331(OLED_CS, OLED_DC, OLED_MOSI, OLED_SC
   PWM/servo/GPIO value to the Pico even if something upstream (a future Django
   layer) tried to.
 
-## Django ↔ firmware boundary
+## CEREBRO (Django brain) — new 2026-09-18
 
-- **Status: NOT STARTED**, unchanged this session. No Django code exists in this
-  repository. Everything here remains architectural intent from `CLAUDE.md`.
-- The ESP32's new `pico_link` + `face` public APIs (`picoMoveForward(speed)`,
-  `picoNeckCenter()`, `setFace(FACE_ANGRY)`, etc.) are the shape a future Django
-  integration would call into — bounded, named operations, never raw hardware
-  values. No Django-specific code was added; this is just noting that the firmware
-  foundation now has a natural seam for it.
+**Where it runs:** on Enrico's home-lab mini server, never the laptop; the laptop is only for
+development and Mini-Ultron must work with it off. So: all config is env vars / `cerebro/.env`
+(gitignored, template `cerebro/.env.example`), models live in `ULTRON_DATA_DIR`, `manage.py
+fetch_models` downloads them on the target machine, `deploy/cerebro.service` is a systemd unit.
+Not yet deployed to the mini server (its OS/CPU/IP are unknown to the repo); everything so far was
+run on the dev laptop.
+
+**Stack (decided):** Groq `openai/gpt-oss-20b` (production model, strict `json_schema` structured
+outputs, `reasoning_effort=low`, `include_reasoning=false`), one OpenAI-compatible client so
+Ollama can replace it by settings only; faster-whisper `small` int8 on CPU (`base` was 2x faster
+but misheard "quítate"); Piper `es_ES-davefx-medium` (Spanish male voice; a deeper/theatrical
+voice is a later tuning, `TTS_VOICE`/`TTS_LENGTH_SCALE`). GROQ_API_KEY comes from `.env`/environment,
+never from code; `.env` and models are gitignored.
+
+**Transport (decided): plain HTTP.** One request per utterance because the firmware already
+segments utterances; `HTTPClient` ships with the ESP32 core; curl-debuggable. WebSocket would only
+add streaming we don't need. `POST /api/converse` (raw PCM16 mono 16 kHz in, JSON out with
+`transcript`, `behavior{text,face,movement,neck}`, `audio{url,bytes,...}`, `timings_ms`) then
+`GET /api/audio/<id>` (raw PCM16 mono 16 kHz, Content-Length). Also `POST /api/converse_text`
+and `GET /api/health`. Details: `cerebro/README.md`.
+
+**Behavior schema (only vocabulary the LLM may use, `brain/schemas.py`):**
+`face` in IDLE, ANGRY, SURPRISED, SUSPICIOUS, SPEAKING, GLITCH, SLEEPING (the real `FaceState`
+names; LISTENING/THINKING are ESP32-owned states); `movement` in NONE, FORWARD, BACKWARD,
+STRAFE_LEFT, STRAFE_RIGHT, ROTATE_LEFT, ROTATE_RIGHT; `neck` in NONE, CENTER, LEFT, RIGHT. No
+numeric/hardware fields exist. Unknown values -> safe defaults; missing text -> canned GLITCH line
+so the robot never goes mute. Movement is dropped server-side unless `ULTRON_ALLOW_MOVEMENT=1`.
+
+**VERIFIED on the dev laptop 2026-09-18:**
+- Real Groq: valid structured JSON every time, ~250-500 ms; refuses harmful requests in
+  character; movement/neck intents come out correctly when asked.
+- Real full loop by curl against gunicorn: Piper-synthesized Spanish utterance, attenuated to mic
+  level with noise -> exact transcript -> reply -> 16 kHz PCM, **~1.3-1.5 s total**
+  (stt ~0.9 s, llm ~0.25-0.4 s, tts ~0.2 s warm). Reply audio comes back with correct Content-Length.
+- 54 unit tests (`manage.py test brain`; LLM via `httpx.MockTransport`) all pass; plus
+  `RUN_MODEL_TESTS=1` runs a real Piper -> Whisper loopback test that passes. Tests found and fixed
+  one real bug (corrupt WAV raised an uncaught `wave.Error`).
+- `python manage.py ask "..."` / `converse_wav file` let you try it without hardware.
+
+**NOT verified:** anything involving the ESP32 talking to the server (needs Wi-Fi credentials);
+real microphone audio quality through Whisper (only synthetic, attenuated, noisy audio so far);
+end-to-end latency including upload/download over Wi-Fi; behavior on the mini server (CPU may make
+`small` too slow -> `STT_MODEL=base`); personality quality (first prompt only, replies can still
+run long; `ULTRON_MAX_REPLY_CHARS=200` trims them).
+
+**No memory/RAG/vector DB/agents/dashboards on purpose** (v0.1): only a rolling in-RAM history
+per session (6 turns).
 
 ## Safety review (this session)
 
@@ -645,14 +738,15 @@ correctly over the link), and the watchdog's `STOPPED:TIMEOUT` message is
 confirmed reaching the ESP32 over UART too. **The ESP32↔Pico link has nothing
 outstanding — status, movement, and safety-timeout visibility are all verified.**
 
-**Update 2026-09-18: all v1 hardware is wired and verified in bench sketches** (MPU6050,
-INMP441, amp + speaker, mic+speaker full-duplex), and the mic/speaker are integrated into
-`hello_ultron` as `audio.{h,cpp}` with continuous voice detection. The MPU6050 is integrated too (`imu.{h,cpp}`, records shocks only, no face
-reaction, unreliable while audio runs — see above). Still open: the
-power-rail decision (can the Freenove shield's 5V power the ESP32 + amp?). After the IMU,
-the plan is the Django layer, starting with the ESP32<->Django intent contract and a fake
-server; still open decisions: LLM provider, STT (local vs cloud), TTS (local vs cloud).
-Original 2026-09-15 note follows.
+**Update 2026-09-18 (evening): CEREBRO v0.1 exists.** All v1 hardware is wired and verified,
+audio and IMU are integrated (`audio.{h,cpp}`, `imu.{h,cpp}`; IMU data is unreliable while audio
+runs — see its section), the Django backend works end-to-end with real Groq/Whisper/Piper, and the
+ESP32 side (`brain_link`, `conversation`, `motion`) is written and compiles. **Next step: the
+first physical conversation** — Enrico creates `firmware/esp32/hello_ultron/wifi_config.h` (Wi-Fi
+SSID/password + the server's IP), Claude uploads, Enrico talks to the robot and reports what
+happens. Movement stays off (robot is on a laptop). The power-rail question is being handled by
+Enrico. Then: move CEREBRO to the mini server, tune latency/personality/voice.
+Original notes follow.
 
 **Enrico decided 2026-09-15: next session continues on hardware** (not the
 Django/LLM layer yet, even though it's technically unblocked). Concretely, that
