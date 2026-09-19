@@ -1,0 +1,22 @@
+# systemd unit for CEREBRO on the home-lab mini server.
+# Adjust User, WorkingDirectory and the venv path, then:
+#   sudo cp deploy/cerebro.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now cerebro
+#   journalctl -u cerebro -f          # logs, incl. per-turn stt/llm/tts timings
+[Unit]
+Description=Mini-Ultron CEREBRO (Django backend: STT + LLM + TTS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ultron
+WorkingDirectory=/opt/mini-ultron/cerebro
+EnvironmentFile=/opt/mini-ultron/cerebro/.env
+# One worker on purpose: the Whisper/Piper models live in memory, and threads give
+# concurrency for the single robot. Bind to the LAN so the ESP32 can reach it.
+ExecStart=/opt/mini-ultron/venv/bin/gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 1 --threads 4 --timeout 90
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

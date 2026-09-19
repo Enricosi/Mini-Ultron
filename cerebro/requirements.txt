@@ -1,0 +1,7 @@
+# CEREBRO backend. Tested on Python 3.14 (wheels exist for all of these).
+Django>=6.1,<6.2
+httpx>=0.28
+numpy>=2.0
+faster-whisper>=1.2
+piper-tts>=1.8
+gunicorn>=23  # production server on the home-lab (Linux)

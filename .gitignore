@@ -5,3 +5,9 @@ __pycache__/
 .env
 .claude/
 freenove-car-reference/
+
+# CEREBRO local data (voices, whisper models, debug audio)
+cerebro/var/
+
+# ESP32 Wi-Fi/server credentials (copy wifi_config.example.h to wifi_config.h)
+firmware/esp32/hello_ultron/wifi_config.h
