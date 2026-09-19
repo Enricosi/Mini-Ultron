@@ -170,11 +170,12 @@ class Pipeline:
 
         turn.timings_ms["total"] = _ms(t0)
         logger.info(
-            "turn stt=%sms llm=%sms tts=%sms total=%sms | %r -> [%s/%s/%s] %r",
+            "turn stt=%sms llm=%sms tts=%sms total=%sms tokens=%s | %r -> [%s/%s/%s] %r",
             turn.timings_ms.get("stt", "-"),
             turn.timings_ms["llm"],
             turn.timings_ms["tts"],
             turn.timings_ms["total"],
+            getattr(self.llm, "last_usage", None) or "-",
             user_text[:60],
             behavior.face,
             behavior.movement,

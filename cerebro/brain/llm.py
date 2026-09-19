@@ -65,7 +65,10 @@ class OpenAICompatLLM(LLMBackend):
         self.structured = structured
         self.reasoning_effort = reasoning_effort
         self.timeout_s = timeout_s
-        self._client = client or httpx.Client(timeout=timeout_s)
+        self._client = client or httpx.Client(
+            timeout=timeout_s, limits=httpx.Limits(keepalive_expiry=60.0)
+        )
+        self.last_usage: dict = {}  # token counts of the last call, for latency debugging
 
     @property
     def key_configured(self) -> bool:
@@ -131,6 +134,13 @@ class OpenAICompatLLM(LLMBackend):
                     raise
         except _HTTPStatusError as exc:
             raise LLMError(f"LLM HTTP {exc.status}: {exc.body[:200]}") from None
+        usage = data.get("usage") or {}
+        details = usage.get("completion_tokens_details") or {}
+        self.last_usage = {
+            "prompt": usage.get("prompt_tokens"),
+            "completion": usage.get("completion_tokens"),
+            "reasoning": details.get("reasoning_tokens"),
+        }
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):

@@ -8,7 +8,7 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-18 (CEREBRO v0.1 backend built and verified with real Groq/Whisper/Piper; ESP32 brain-link firmware written and compiles, NOT yet run against the server — waiting on Wi-Fi credentials; IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
+Last reviewed: 2026-09-18 (CEREBRO v0.1 works end-to-end on real hardware: spoken conversations with the robot verified, ~1.7-2.1 s from end of speech to start of reply audio (server temporarily on the dev laptop); IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
 then the Pico's first-ever battery-powered physical test found two bugs. 2026-09-14:
 neck bug fixed and physically confirmed. 2026-09-15: front wheel connector/wiring
 issue resolved by Enrico (hardware-side, no firmware change); M1/M4 then found
@@ -499,8 +499,28 @@ move anything even if invoked. IMPLEMENTED, COMPILES.
 
 ### `brain_link.{h,cpp}`, `conversation.{h,cpp}`, `motion.{h,cpp}`, `brain_config.h` — CEREBRO on the ESP32 (new 2026-09-18)
 
-**IMPLEMENTED, COMPILES (both with and without Wi-Fi config), NOT YET RUN against the server** —
-the only missing input is Enrico's Wi-Fi credentials (`wifi_config.h`).
+**IMPLEMENTED, COMPILES (both with and without Wi-Fi config), UPLOADED, PHYSICALLY TESTED
+2026-09-18 — first real conversation with the robot works.** Enrico spoke, the ESP32 uploaded
+the utterance, CEREBRO (running on the dev laptop for this first test) transcribed it, Groq
+answered, Piper spoke, and the robot played the reply with the chosen face. Three consecutive
+turns kept context. Measured per-turn (`[turn]` log line): utterance 3-7 s of speech ->
+server round trip 1.3-1.9 s (stt ~0.7-1.0 s, llm ~0.3-0.5 s, tts ~0.15 s) -> reply audio
+download ~0.25 s -> **speech-end to playback ~1.7-2.1 s**, then the reply plays (4-5 s).
+
+Two real problems were found and fixed the same session:
+- **Windows-style firewall on the dev laptop** (`ufw` active) blocked the ESP32 (`[brain] server
+  ... not reachable (http -1)`) although ping worked. Enrico ran `sudo ufw allow from
+  <lan-subnet> to any port 8000 proto tcp` (temporary; remove with `sudo ufw delete allow from
+  <lan-subnet> to any port 8000 proto tcp` once CEREBRO runs on the mini server). The mini
+  server needs port 8000 reachable from the ESP32 too.
+- **Wi-Fi modem power-save made uploads ~9 s** (a 100 KB utterance) and ping ~48 ms avg /117 ms
+  max; the 165 KB reply downloaded in 0.3 s, which pointed at ACK latency, not bandwidth.
+  `WiFi.setSleep(false)` in `brain_link.cpp` cut ping to ~10 ms avg and the whole upload to well
+  under a second (round trip went 15.9 s -> 1.3-1.9 s).
+- `wifi_config.h` needs SSID/password as quoted C strings and a `CEREBRO_PORT` line (the first
+  file lacked quotes and the port, which broke the build; fixed by quoting). Note: the compiler's
+  error output echoed the SSID/password into the session log once — local only, nothing was sent
+  or committed.
 
 - `brain_config.h` + `wifi_config.example.h`: `wifi_config.h` (SSID, password, `CEREBRO_HOST`,
   `CEREBRO_PORT`, optional `MINI_ULTRON_BRAIN_MOVEMENT`) is **gitignored**. Without it the firmware
@@ -633,11 +653,24 @@ so the robot never goes mute. Movement is dropped server-side unless `ULTRON_ALL
   one real bug (corrupt WAV raised an uncaught `wave.Error`).
 - `python manage.py ask "..."` / `converse_wav file` let you try it without hardware.
 
-**NOT verified:** anything involving the ESP32 talking to the server (needs Wi-Fi credentials);
-real microphone audio quality through Whisper (only synthetic, attenuated, noisy audio so far);
-end-to-end latency including upload/download over Wi-Fi; behavior on the mini server (CPU may make
-`small` too slow -> `STT_MODEL=base`); personality quality (first prompt only, replies can still
-run long; `ULTRON_MAX_REPLY_CHARS=200` trims them).
+**Verified on real hardware 2026-09-18** (see `brain_link`): real microphone speech through
+Whisper `small` (Spanish, mostly accurate; one short utterance came back as "¡Oh, yo tronco!"),
+Wi-Fi upload/download, full latency, face changes, multi-turn context, in-character insults on
+request. Background noise alone (1.1 s, peak ~0.04 FS) is correctly dropped: Whisper's VAD +
+hallucination filter yield `ignored (no_speech)` (without VAD that clip transcribes as
+"¡Suscríbete!", the classic Whisper hallucination).
+
+**Latency outlier, unresolved:** one LLM call took ~6.0 s and another ~2.2 s after ~25 s idle
+(normally 0.3-0.5 s, including after 30 s idle in an isolated test with `json_schema`, `json_object`
+and unstructured). Groq-side variance suspected; the server now logs token counts (`tokens=` in
+the turn line; reasoning tokens were only 7-17 in normal turns) and the httpx keep-alive is 60 s.
+Watch for it; a smaller non-reasoning model is the fallback if it keeps happening.
+
+**NOT verified:** behavior on the mini server (its CPU may make `small` too slow ->
+`STT_MODEL=base`); personality/voice tuning (first prompt only, replies can still run long;
+`ULTRON_MAX_REPLY_CHARS=200` trims them; the Piper voice is a plain Spanish male voice, not yet
+"deep/theatrical"); barge-in (the mic is deliberately deaf while the robot thinks/speaks);
+movement from the brain (compiled out and disabled server-side on purpose).
 
 **No memory/RAG/vector DB/agents/dashboards on purpose** (v0.1): only a rolling in-RAM history
 per session (6 turns).
@@ -738,14 +771,15 @@ correctly over the link), and the watchdog's `STOPPED:TIMEOUT` message is
 confirmed reaching the ESP32 over UART too. **The ESP32↔Pico link has nothing
 outstanding — status, movement, and safety-timeout visibility are all verified.**
 
-**Update 2026-09-18 (evening): CEREBRO v0.1 exists.** All v1 hardware is wired and verified,
-audio and IMU are integrated (`audio.{h,cpp}`, `imu.{h,cpp}`; IMU data is unreliable while audio
-runs — see its section), the Django backend works end-to-end with real Groq/Whisper/Piper, and the
-ESP32 side (`brain_link`, `conversation`, `motion`) is written and compiles. **Next step: the
-first physical conversation** — Enrico creates `firmware/esp32/hello_ultron/wifi_config.h` (Wi-Fi
-SSID/password + the server's IP), Claude uploads, Enrico talks to the robot and reports what
-happens. Movement stays off (robot is on a laptop). The power-rail question is being handled by
-Enrico. Then: move CEREBRO to the mini server, tune latency/personality/voice.
+**Update 2026-09-18 (night): CEREBRO v0.1 talks.** The first physical conversation works
+(see `brain_link`): speech in, in-character reply out with the right face, ~1.7-2.1 s
+speech-end-to-reply. Right now CEREBRO runs **temporarily on the dev laptop** (a `gunicorn`
+process and a temporary `ufw` rule for port 8000). Next steps, in order: (1) **move CEREBRO to the
+home-lab mini server** (needs its OS/CPU/IP from Enrico; then change `CEREBRO_HOST` in
+`wifi_config.h`, remove the laptop `ufw` rule, install `deploy/cerebro.service`); (2) tune
+personality and voice (deeper/theatrical Piper voice, reply length); (3) later: barge-in,
+brain-driven movement (only with the robot on the floor, both opt-in flags), conversation memory
+beyond the in-RAM history. The power-rail question is being handled by Enrico.
 Original notes follow.
 
 **Enrico decided 2026-09-15: next session continues on hardware** (not the

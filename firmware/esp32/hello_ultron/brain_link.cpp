@@ -155,6 +155,9 @@ static void runRequest() {
 static void brainTask(void *) {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
+  // Modem power-save made the round trip ~100 ms and a 100 KB upload take ~9 s (TCP is
+  // ACK-clocked). A wall-powered robot doesn't need it: keep the radio always on.
+  WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   bool wasConnected = false;
 
