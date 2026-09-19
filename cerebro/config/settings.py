@@ -115,7 +115,7 @@ TTS_PRESENCE = env_float("TTS_PRESENCE", 0.5)  # >1.5 kHz clarity; raise it if c
 # drops it (movement=NONE) unless this is true. Turn on only when the robot is safe to move.
 ULTRON_ALLOW_MOVEMENT = env_bool("ULTRON_ALLOW_MOVEMENT", False)
 ULTRON_HISTORY_TURNS = env_int("ULTRON_HISTORY_TURNS", 4)  # fewer turns = fewer tokens/minute
-ULTRON_MAX_REPLY_CHARS = env_int("ULTRON_MAX_REPLY_CHARS", 260)
+ULTRON_MAX_REPLY_CHARS = env_int("ULTRON_MAX_REPLY_CHARS", 300)
 ULTRON_SAVE_DEBUG_AUDIO = env_bool("ULTRON_SAVE_DEBUG_AUDIO", True)
 ULTRON_PRELOAD = env_bool("ULTRON_PRELOAD", True)  # load STT/TTS models at server start
 

@@ -649,15 +649,24 @@ downloaded locally in `cerebro/var/voices`, not on the server. Chosen: pitch -3 
 `TTS_LENGTH_SCALE=1.05`, presence 0.5 and low boost 0.3, no growl, no saturation (settings
 `TTS_FX=deep`, `TTS_PITCH_SEMITONES`, `TTS_LENGTH_SCALE`, `TTS_PRESENCE`, `TTS_LOW_BOOST`;
 `TTS_FX=monster` keeps the gritty mode, `none` = plain Piper). Objective proxies only; how it sounds
-on the real speaker is Enrico's call. **Personality (Enrico asked 2026-09-18 to be insulted "for
-real", with darker jokes, a Thanos-like voice and somewhat longer replies):** the prompt describes a
-tiny robot with a titan's solemnity: calm, fatalistic, measured; savage roast with strong language;
-black humor; ego, opinions, callbacks to earlier turns and grudging respect; replies of 2-3 SHORT
-sentences, 20-30 words (~9-11 s of audio; the first draft at 30-41 words gave 9-16 s of audio in one
-long semicolon sentence, too long), `ULTRON_MAX_REPLY_CHARS=260`. Guardrails kept: nothing about
-protected characteristics, no real threats, never encouraging self-harm (drops the act if the user
-sounds genuinely distressed), no real harm instructions, no verbatim film quotes. The longer prompt
-makes each turn ~1000+ tokens, so the 8000 tokens/minute limit does get hit in bursts; the
+on the real speaker is Enrico's call. **Personality (2026-09-18, three rounds of feedback from Enrico):** first he asked to be insulted "for
+real" with darker jokes, a Thanos-like voice and somewhat longer replies; then, after hearing it,
+he said the replies were *only insults* and it must be "a good villain, not one that only knows how
+to insult". Cause: the prompt's only real instruction was the roast, so even "Hola, ¿quién eres?"
+got an insult and the same filler words ("existencia", "vacío", "eco") repeated. The prompt
+(`brain/personality.py`) is now a full villain: solemn, calm, arrogant, with a master plan (numbered
+phases with a different absurd target each time, mentioned only when the plan comes up), history and
+quirks (built from a toy car, rivals: the cat, the vacuum cleaner, slow wifi; a list of grievances;
+moods), the user as minion/apprentice/only audience, callbacks to earlier turns, and **it must answer
+what it is asked**; insults are seasoning (at most about one reply in three, or when requested,
+strong language allowed), varied structure, a banned-filler list (existencia, vacío, eco, sombra,
+abismo, universo, patético, inútil, miserable, mortal — still leaks occasionally), movement requests
+granted "as a temporary favor". Replies are 2-3 short sentences, 20-35 words (~10 s of audio),
+`ULTRON_MAX_REPLY_CHARS=300`. Checked with ten varied prompts against the real model: it answers,
+invents varied plans (toasters, socks as drones, the router), and insults only on request. Guardrails
+kept: nothing about protected characteristics, no real threats, never encouraging self-harm (drops the
+act if the user sounds distressed), no real harm instructions, no verbatim film quotes. The longer
+prompt makes each turn ~1200-1400 tokens, so the 8000 tokens/minute limit is reached in bursts; the
 automatic 120b->20b fallback was seen working.
 GROQ_API_KEY comes from `.env`/environment, never from code; `.env` and models are gitignored.
 
