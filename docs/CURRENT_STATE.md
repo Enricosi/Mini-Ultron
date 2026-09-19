@@ -8,7 +8,7 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-18 (mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
+Last reviewed: 2026-09-18 (audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
 then the Pico's first-ever battery-powered physical test found two bugs. 2026-09-14:
 neck bug fixed and physically confirmed. 2026-09-15: front wheel connector/wiring
 issue resolved by Enrico (hardware-side, no firmware change); M1/M4 then found
@@ -70,9 +70,10 @@ servos, camera.
 ## Repository layout
 
 - `firmware/esp32/hello_ultron/` — main ESP32-S3 sketch. Split into modules this
-  session: `hello_ultron.ino` (setup/loop wiring only), `face.{h,cpp}`,
-  `pico_link.{h,cpp}` + `pico_link_config.h`, `arm_gestures.{h,cpp}`,
-  `debug_console.{h,cpp}`.
+  session: `hello_ultron.ino` (setup/loop wiring only, plus a small temporary
+  `audioFaceGlue()`), `face.{h,cpp}`, `pico_link.{h,cpp}` + `pico_link_config.h`,
+  `arm_gestures.{h,cpp}`, `debug_console.{h,cpp}`, **`audio.{h,cpp}`** (new 2026-09-18,
+  see "`audio.{h,cpp}`" below).
 - `firmware/esp32/servo_test/` — standalone PCA9685 bench-test sketch (serial
   commands `n/u/l/r/w`). Targets now-removed hardware — historical reference only,
   not runnable against the current ESP32 wiring.
@@ -368,6 +369,43 @@ all 4 wheels correctly, matching the USB-bench behavior already verified earlier
 this session. The ESP32↔Pico UART link is now proven for both status and
 locomotion.
 
+### `audio.{h,cpp}` — mic + speaker + continuous voice detection (new 2026-09-18)
+
+One full-duplex I2S port (GPIO9/10 shared clocks, mic SD=GPIO11, amp DIN=GPIO12, no
+MCLK, 16 kHz, 32-bit stereo) — same format proven by `mic_speaker_test`. Runs in its
+**own FreeRTOS task on core 0**: `ESP_I2S` has no non-blocking write, and a blocking
+call in `loop()` would freeze the face. The main loop only uses the non-blocking API in
+`audio.h`: `audioInit()`, `audioPollEvent()` (`SPEECH_START/END/ABORT`),
+`audioGetStatus()`, `audioIsPlaying()`, `audioBeep()`, `audioReplayLastUtterance()`.
+
+**Energy-based continuous listening** (Enrico has no button, so no push-to-talk):
+20 ms frames, DC removed, RMS level; 1 s calibration at boot, then a slow-adapting noise
+floor (only while idle). Start threshold = max(floor x3.5, 1200), stop threshold =
+max(floor x2, 800) (hysteresis). Speech starts after 6 frames (120 ms) above start
+threshold, with a 400 ms pre-roll ring so the first syllable isn't lost; ends after 40
+frames (800 ms) below stop threshold; < 300 ms of voice is discarded (clap/click); hard
+cap 12 s per utterance. The mic is ignored while playing plus 300 ms after, so the robot
+never hears itself. The last valid utterance is kept in RAM (max 4 s = 64000 samples) for
+verification only — streaming to Django is future work and will replace this.
+
+`hello_ultron.ino`'s `audioFaceGlue()` (temporary until Django drives the face):
+`LISTENING` while an utterance is heard, `SPEAKING` while playing, restoring the
+previous face afterward. Debug console: `AUDIO:STATUS`, `AUDIO:BEEP`, `AUDIO:REPLAY`.
+
+**IMPLEMENTED, COMPILES, UPLOADED, PHYSICALLY TESTED 2026-09-18** (Enrico spoke, clapped,
+paused mid-sentence; Claude read serial): calibrates on boot (floor ~360-830, adapts down
+to ~360-400), detects phrases of 2-6 s as single utterances (a mid-sentence pause did
+not split one), discards a clap as too short, `AUDIO:REPLAY` plays back the whole phrase
+complete (Enrico confirmed), face switches to `LISTENING` and back (Enrico confirmed).
+Found and fixed a bug during testing: the trailing-silence trim subtracted frames that
+were never stored when the capture buffer was full (truncated a 6 s phrase to 3.4 s).
+**Not yet verified:** the 12 s per-utterance cap (both long-phrase attempts only produced
+~5-6 s of continuous voice), behavior with the drive motors running (their noise will
+raise the floor/trigger the detector — plan: raise the threshold while moving), noisy
+rooms/TV/music (energy detection can't tell voice from noise — plan: second-stage VAD on
+the Django side before STT). The audio task's stack/timing under heavy face/UART load is
+only lightly exercised. Resources: 51% RAM (169760 B), 29% flash.
+
 ### `arm_gestures.{h,cpp}` — PCA9685/arms deferred+removed, historical reference only
 
 The PCA9685 and both arm servos have been **physically removed** from the ESP32
@@ -577,6 +615,15 @@ ESP32↔Pico UART link is wired and proven end-to-end for both status
 correctly over the link), and the watchdog's `STOPPED:TIMEOUT` message is
 confirmed reaching the ESP32 over UART too. **The ESP32↔Pico link has nothing
 outstanding — status, movement, and safety-timeout visibility are all verified.**
+
+**Update 2026-09-18: all v1 hardware is wired and verified in bench sketches** (MPU6050,
+INMP441, amp + speaker, mic+speaker full-duplex), and the mic/speaker are integrated into
+`hello_ultron` as `audio.{h,cpp}` with continuous voice detection. Not yet integrated:
+the MPU6050 (still only `mpu6050_test`; a small `imu.{h,cpp}` is next), and the
+power-rail decision (can the Freenove shield's 5V power the ESP32 + amp?). After the IMU,
+the plan is the Django layer, starting with the ESP32<->Django intent contract and a fake
+server; still open decisions: LLM provider, STT (local vs cloud), TTS (local vs cloud).
+Original 2026-09-15 note follows.
 
 **Enrico decided 2026-09-15: next session continues on hardware** (not the
 Django/LLM layer yet, even though it's technically unblocked). Concretely, that

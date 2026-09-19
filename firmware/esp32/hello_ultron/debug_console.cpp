@@ -3,6 +3,7 @@
 #include "face.h"
 #include "pico_link.h"
 #include "arm_gestures.h"
+#include "audio.h"
 
 static char buffer[64];
 static uint8_t len = 0;
@@ -15,6 +16,7 @@ static void printHelp() {
         "  NECK:CENTER | NECK:LEFT | NECK:RIGHT\n"
         "  MOVE:FWD:<0-100> | MOVE:BACK:<0-100> | MOVE:LEFT:<0-100> | MOVE:RIGHT:<0-100>\n"
         "  ROTATE:L:<0-100> | ROTATE:R:<0-100>\n"
+        "  AUDIO:STATUS | AUDIO:BEEP | AUDIO:REPLAY (replays the last detected utterance)\n"
         "  ARMS:NEUTRAL|UP|LEFT|RIGHT|WAVE (deferred in v1, see arm_gestures.h)\n"
         "  HELP"));
 }
@@ -83,6 +85,27 @@ static void handleNeck(const String &dir) {
     Serial.println("OK");
 }
 
+static void handleAudio(const String &action) {
+    if (action == "STATUS") {
+        AudioStatus a = audioGetStatus();
+        Serial.printf("AUDIO: LEVEL=%d FLOOR=%d START_THR=%d STOP_THR=%d CALIBRATED=%d "
+                      "SPEECH=%d PLAYING=%d UTTERANCES=%u LAST_MS=%u CAPTURED_SAMPLES=%u\n",
+                      a.level, a.noiseFloor, a.startThreshold, a.stopThreshold,
+                      a.calibrated, a.speechActive, a.playing,
+                      (unsigned)a.utterances, (unsigned)a.lastUtteranceMs,
+                      (unsigned)a.capturedSamples);
+        return;
+    }
+    bool ok;
+    if (action == "BEEP") ok = audioBeep();
+    else if (action == "REPLAY") ok = audioReplayLastUtterance();
+    else {
+        Serial.println("ERR:PARSE");
+        return;
+    }
+    Serial.println(ok ? "OK" : "ERR:BUSY_OR_NOTHING_CAPTURED");
+}
+
 static void handleArms(const String &action) {
 #if MINI_ULTRON_ENABLE_ARMS
     if (action == "NEUTRAL") handsNeutral();
@@ -148,6 +171,7 @@ static void handleLine(const String &line) {
     if (verb == "FACE") { handleFace(rest); return; }
     if (verb == "PICO") { handlePico(rest); return; }
     if (verb == "NECK") { handleNeck(rest); return; }
+    if (verb == "AUDIO") { handleAudio(rest); return; }
     if (verb == "ARMS") { handleArms(rest); return; }
     if (verb == "MOVE" || verb == "ROTATE") { handleMoveOrRotate(verb, rest); return; }
 
