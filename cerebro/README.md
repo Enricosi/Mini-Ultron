@@ -19,7 +19,10 @@ RUN_MODEL_TESTS=1 ../venv/bin/python manage.py test brain   # + real Piper->Whis
 ../venv/bin/gunicorn config.wsgi --bind 0.0.0.0:8000 --workers 1 --threads 4 --timeout 90
 ```
 
-A systemd unit is in `deploy/cerebro.service`. `curl http://SERVER:8000/api/health` shows what is configured.
+A systemd **user** unit is in `deploy/cerebro.service` (no sudo to install; `sudo loginctl
+enable-linger $USER` once so it starts at boot). `curl http://SERVER:8000/api/health` shows what is
+configured. If `python3-venv` is missing and you have no root: `curl -O https://bootstrap.pypa.io/virtualenv.pyz && python3 virtualenv.pyz venv`.
+The server's firewall must allow tcp/8000 from the LAN (`sudo ufw allow from <lan-subnet> to any port 8000 proto tcp`).
 
 ## Try it without hardware
 
@@ -45,7 +48,9 @@ don't need yet.
 
 - LLM: `LLM_PROVIDER=ollama LLM_MODEL=... ` (OpenAI-compatible `/v1/chat/completions`).
 - STT model size: `STT_MODEL=tiny|base|small|medium` — pick by the server's CPU.
-- TTS voice: `TTS_VOICE=<piper voice>`, then `fetch_models`.
+- TTS voice: `TTS_VOICE=<piper voice>`, then `fetch_models`. Monster effect: `TTS_FX=monster|none`,
+  `TTS_PITCH_SEMITONES` (-4 deep .. -8 demon), `TTS_GROWL`, `TTS_DRIVE`.
+- LLM rate limits: `LLM_FALLBACK_MODEL` is tried once on a 429 (Groq's free tier is 8000 tokens/min per model).
 
 ## Safety
 

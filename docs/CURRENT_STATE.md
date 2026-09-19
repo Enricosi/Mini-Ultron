@@ -8,7 +8,7 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-18 (CEREBRO v0.1 works end-to-end on real hardware: spoken conversations with the robot verified, ~1.7-2.1 s from end of speech to start of reply audio (server temporarily on the dev laptop); IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
+Last reviewed: 2026-09-18 (CEREBRO v0.1 works end-to-end on real hardware: spoken conversations with the robot verified, ~1.7-2.1 s from end of speech to start of reply audio CEREBRO now runs on the home-lab mini server, not the laptop; IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
 then the Pico's first-ever battery-powered physical test found two bugs. 2026-09-14:
 neck bug fixed and physically confirmed. 2026-09-15: front wheel connector/wiring
 issue resolved by Enrico (hardware-side, no firmware change); M1/M4 then found
@@ -614,19 +614,40 @@ Adafruit_SSD1331 display = Adafruit_SSD1331(OLED_CS, OLED_DC, OLED_MOSI, OLED_SC
 
 ## CEREBRO (Django brain) — new 2026-09-18
 
-**Where it runs:** on Enrico's home-lab mini server, never the laptop; the laptop is only for
-development and Mini-Ultron must work with it off. So: all config is env vars / `cerebro/.env`
-(gitignored, template `cerebro/.env.example`), models live in `ULTRON_DATA_DIR`, `manage.py
-fetch_models` downloads them on the target machine, `deploy/cerebro.service` is a systemd unit.
-Not yet deployed to the mini server (its OS/CPU/IP are unknown to the repo); everything so far was
-run on the dev laptop.
+**Where it runs: DEPLOYED 2026-09-18 on the home-lab mini server** (`home-lab`, <server>,
+wired; Ubuntu 24.04, Ryzen 7 7735HS 8c/16t, 19 GB RAM, 785 GB free; it also runs Docker and other
+services — untouched). The laptop is only for development and Mini-Ultron works with it off.
+Layout on the server: `~/mini-ultron/{cerebro,deploy,venv,data}` (venv built with PyPA's
+`virtualenv.pyz` because `python3-venv` is not installed and sudo needs a password);
+`cerebro/.env` (chmod 600) holds `GROQ_API_KEY`, `ULTRON_DATA_DIR`, `DJANGO_SECRET_KEY`,
+`STT_CPU_THREADS=8`; runs as the **systemd user service** `cerebro` (`systemctl --user status
+cerebro`, `journalctl --user -u cerebro -f`), `Linger=yes` so it starts at boot; the server's `ufw`
+allows tcp/8000 from <lan-subnet> (Enrico ran the sudo commands). Deploy = `rsync -a --delete
+--exclude var/ --exclude .env cerebro/ <user>@<server>:~/mini-ultron/cerebro/` then
+`systemctl --user restart cerebro`. SSH key login from the laptop was set up by Enrico
+(`ssh-copy-id`); `wifi_config.h` now has `CEREBRO_HOST "<server>"`. **Leftover on the
+laptop:** the temporary `ufw` rule for port 8000 (remove: `sudo ufw delete allow from
+<lan-subnet> to any port 8000 proto tcp`); the laptop's CEREBRO process was stopped.
 
-**Stack (decided):** Groq `openai/gpt-oss-20b` (production model, strict `json_schema` structured
-outputs, `reasoning_effort=low`, `include_reasoning=false`), one OpenAI-compatible client so
-Ollama can replace it by settings only; faster-whisper `small` int8 on CPU (`base` was 2x faster
-but misheard "quítate"); Piper `es_ES-davefx-medium` (Spanish male voice; a deeper/theatrical
-voice is a later tuning, `TTS_VOICE`/`TTS_LENGTH_SCALE`). GROQ_API_KEY comes from `.env`/environment,
-never from code; `.env` and models are gitignored.
+**Stack (decided):** Groq `openai/gpt-oss-120b` (production model, strict `json_schema` structured
+outputs, `reasoning_effort=low`, `include_reasoning=false`) with `openai/gpt-oss-20b` as automatic
+**fallback on a 429 rate limit** (each model has its own quota); one OpenAI-compatible client so
+Ollama can replace it by settings only. Speed check (interleaved calls, 2026-09-18): 20b median
+339 ms, 120b median 478 ms — +140 ms for a wittier model, accepted because Enrico's condition was
+"only if it's fast". **Groq limit found: 8000 tokens/minute per model on this plan**; each turn
+costs ~900-1000 prompt tokens, so history is 4 turns (`ULTRON_HISTORY_TURNS`) and the fallback
+exists (a benchmark burst hit a real 429). faster-whisper `small` int8 (on the server: 1.13 s for a
+4 s utterance with `cpu_threads=8`; 1.28 s at the default 4; `medium` 3.7 s with no better
+transcript, rejected). Piper `es_ES-davefx-medium` plus a **monster voice** (`brain/voice_fx.py`,
+numpy only): pitch drop by resampling (Piper pre-compensates speed), 65 Hz growl, saturation,
+slap-back and low-end boost. Defaults `TTS_FX=monster`, `TTS_PITCH_SEMITONES=-6`,
+`TTS_GROWL=0.3`, `TTS_DRIVE=2.0`; measured pitch: plain ~130 Hz, -4 ~100 Hz, -6 ~89 Hz,
+-8 ~80 Hz (samples generated for Enrico to audition; how it sounds on the ESP32 speaker is not
+yet confirmed). **Personality (Enrico asked 2026-09-18 to be insulted "for real" with darker
+jokes):** the prompt now asks for a savage roast with strong language and black humor;
+guardrails kept: nothing about protected characteristics, no real threats, never encouraging
+self-harm (drops the act if the user sounds genuinely distressed), no real harm instructions.
+GROQ_API_KEY comes from `.env`/environment, never from code; `.env` and models are gitignored.
 
 **Transport (decided): plain HTTP.** One request per utterance because the firmware already
 segments utterances; `HTTPClient` ships with the ESP32 core; curl-debuggable. WebSocket would only
@@ -771,15 +792,16 @@ correctly over the link), and the watchdog's `STOPPED:TIMEOUT` message is
 confirmed reaching the ESP32 over UART too. **The ESP32↔Pico link has nothing
 outstanding — status, movement, and safety-timeout visibility are all verified.**
 
-**Update 2026-09-18 (night): CEREBRO v0.1 talks.** The first physical conversation works
-(see `brain_link`): speech in, in-character reply out with the right face, ~1.7-2.1 s
-speech-end-to-reply. Right now CEREBRO runs **temporarily on the dev laptop** (a `gunicorn`
-process and a temporary `ufw` rule for port 8000). Next steps, in order: (1) **move CEREBRO to the
-home-lab mini server** (needs its OS/CPU/IP from Enrico; then change `CEREBRO_HOST` in
-`wifi_config.h`, remove the laptop `ufw` rule, install `deploy/cerebro.service`); (2) tune
-personality and voice (deeper/theatrical Piper voice, reply length); (3) later: barge-in,
-brain-driven movement (only with the robot on the floor, both opt-in flags), conversation memory
-beyond the in-RAM history. The power-rail question is being handled by Enrico.
+**Update 2026-09-18 (late night): CEREBRO runs on the mini server and the robot talks to it.**
+Verified: the server answers over the LAN in ~0.65-0.75 s for text turns (llm ~0.5-0.6 s, tts
+~0.13 s); the ESP32 connects to it (`[brain] server OK ... gpt-oss-120b`). **Not yet verified:**
+a spoken turn against the mini server with the new model, the harsher personality and the monster
+voice on the real speaker. Next steps: (1) Enrico talks to the robot and judges voice/insults;
+tune `TTS_PITCH_SEMITONES`/`TTS_GROWL`/`TTS_DRIVE`, the prompt and reply length; (2) remove the
+leftover `ufw` rule on the laptop; (3) later: barge-in, brain-driven movement (robot on the
+floor, both opt-in flags), local Ollama backend (the server seems to already have an Ollama model
+file in `~`), memory beyond the 4-turn in-RAM history. The power-rail question is being handled
+by Enrico.
 Original notes follow.
 
 **Enrico decided 2026-09-15: next session continues on hardware** (not the
