@@ -4,6 +4,7 @@
 #include "pico_link.h"
 #include "arm_gestures.h"
 #include "audio.h"
+#include "imu.h"
 
 static char buffer[64];
 static uint8_t len = 0;
@@ -17,6 +18,7 @@ static void printHelp() {
         "  MOVE:FWD:<0-100> | MOVE:BACK:<0-100> | MOVE:LEFT:<0-100> | MOVE:RIGHT:<0-100>\n"
         "  ROTATE:L:<0-100> | ROTATE:R:<0-100>\n"
         "  AUDIO:STATUS | AUDIO:BEEP | AUDIO:REPLAY (replays the last detected utterance)\n"
+        "  IMU:STATUS | IMU:CAL (keep the robot still for ~1 s)\n"
         "  ARMS:NEUTRAL|UP|LEFT|RIGHT|WAVE (deferred in v1, see arm_gestures.h)\n"
         "  HELP"));
 }
@@ -106,6 +108,24 @@ static void handleAudio(const String &action) {
     Serial.println(ok ? "OK" : "ERR:BUSY_OR_NOTHING_CAPTURED");
 }
 
+static void handleImu(const String &action) {
+    if (action == "STATUS") {
+        ImuData d = imuGetData();
+        Serial.printf("IMU: OK=%d CALIBRATED=%d CALIBRATING=%d ACC[g]=%.2f,%.2f,%.2f "
+                      "GYRO[dps]=%.1f,%.1f,%.1f ROLL=%.1f PITCH=%.1f JOLTS=%u LAST_JOLT_AGO_MS=%ld READS_OK=%u READS_FAILED=%u\n",
+                      d.ok, d.calibrated, d.calibrating, d.ax, d.ay, d.az,
+                      d.gx, d.gy, d.gz, d.rollDeg, d.pitchDeg,
+                      (unsigned)d.joltCount,
+                      d.lastJoltMs ? (long)(millis() - d.lastJoltMs) : -1L,
+                      (unsigned)d.readsOk, (unsigned)d.readsFailed);
+    } else if (action == "CAL") {
+        imuStartCalibration();
+        Serial.println("OK");
+    } else {
+        Serial.println("ERR:PARSE");
+    }
+}
+
 static void handleArms(const String &action) {
 #if MINI_ULTRON_ENABLE_ARMS
     if (action == "NEUTRAL") handsNeutral();
@@ -172,6 +192,7 @@ static void handleLine(const String &line) {
     if (verb == "PICO") { handlePico(rest); return; }
     if (verb == "NECK") { handleNeck(rest); return; }
     if (verb == "AUDIO") { handleAudio(rest); return; }
+    if (verb == "IMU") { handleImu(rest); return; }
     if (verb == "ARMS") { handleArms(rest); return; }
     if (verb == "MOVE" || verb == "ROTATE") { handleMoveOrRotate(verb, rest); return; }
 

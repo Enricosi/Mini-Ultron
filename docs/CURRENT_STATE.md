@@ -8,7 +8,7 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-18 (audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
+Last reviewed: 2026-09-18 (IMU module added, decoupled from the face, data noisy with audio on; audio module + continuous voice detection integrated into hello_ultron, tested; mic+speaker full-duplex verified with `mic_speaker_test`; amp/speaker wired on GPIO9/10/12 (MCLK not connected) + bench sketch added; INMP441 wired on GPIO9/10/11 + bench sketch added; MPU6050 wired on GPIO13/14, bench sketch added, not yet run on hardware). Previously 2026-09-15 (2026-09-13: ESP32-S3 debug console verified over USB,
 then the Pico's first-ever battery-powered physical test found two bugs. 2026-09-14:
 neck bug fixed and physically confirmed. 2026-09-15: front wheel connector/wiring
 issue resolved by Enrico (hardware-side, no firmware change); M1/M4 then found
@@ -72,8 +72,8 @@ servos, camera.
 - `firmware/esp32/hello_ultron/` — main ESP32-S3 sketch. Split into modules this
   session: `hello_ultron.ino` (setup/loop wiring only, plus a small temporary
   `audioFaceGlue()`), `face.{h,cpp}`, `pico_link.{h,cpp}` + `pico_link_config.h`,
-  `arm_gestures.{h,cpp}`, `debug_console.{h,cpp}`, **`audio.{h,cpp}`** (new 2026-09-18,
-  see "`audio.{h,cpp}`" below).
+  `arm_gestures.{h,cpp}`, `debug_console.{h,cpp}`, **`audio.{h,cpp}`** and **`imu.{h,cpp}`**
+  (new 2026-09-18, see their sections below).
 - `firmware/esp32/servo_test/` — standalone PCA9685 bench-test sketch (serial
   commands `n/u/l/r/w`). Targets now-removed hardware — historical reference only,
   not runnable against the current ESP32 wiring.
@@ -406,6 +406,35 @@ rooms/TV/music (energy detection can't tell voice from noise — plan: second-st
 the Django side before STT). The audio task's stack/timing under heavy face/UART load is
 only lightly exercised. Resources: 51% RAM (169760 B), 29% flash.
 
+### `imu.{h,cpp}` — MPU6050-family IMU, records shocks only (new 2026-09-18)
+
+Non-blocking `millis()` module on I2C (SDA=GPIO13, SCL=GPIO14, default 100 kHz):
+`imuInit()`, `imuUpdate(now)` (samples every 10 ms), `imuGetData()` (accel g, gyro dps,
+roll/pitch from gravity, `joltCount`, `lastJoltMs`, read counters). Ranges +/-4 g and
++/-500 dps, DLPF ~44 Hz; temperature deliberately not exposed (the board is an
+MPU6500-family clone, `WHO_AM_I=0x70`). Debug console: `IMU:STATUS`, `IMU:CAL`.
+
+**Enrico's decision 2026-09-18: the IMU must not drive the face in real time.** It only
+*records* that the robot was shaken (`joltCount`, `lastJoltMs`); nothing reacts. The
+future Django layer can read that as context ("I was shaken 3 s ago"). A temporary
+`imuFaceGlue` (jolt -> `FACE_SURPRISED`) was written and then removed.
+
+**KNOWN PROBLEM — the IMU data is unreliable while audio runs.** With the I2S clocks
+(BCLK/WS on GPIO9/10) active, ~28% of I2C reads fail and some "successful" reads carry
+garbage (e.g. `ay = 2.00 g` lying flat, or `0,0,0`). Same firmware without `audioInit()`
+gave clean, stable readings (`az ~ 1.05 g`, correct axes, calibrated). Diagnosis: almost
+certainly electrical crosstalk — the MPU's SDA/SCL wires run next to the I2S data wires
+(GPIO9-12). Not tested by re-routing cables: Enrico decided the space is too tight
+physically. Mitigations in software only: jolt needs 2 consecutive samples over 0.7 g
+deviation + an immediate confirming re-read that agrees; all-zero accel reads are
+discarded. Measured at rest, with audio on, after mitigation: ~6 false jolts per 30 s
+(11 before the confirming read). Gyro-bias calibration is also rejected (noise looks like
+motion), so `CALIBRATED=0`; gyro at rest reads ~0 +/-0.3 dps anyway. **Treat `joltCount`
+and the roll/pitch values as unreliable until the wiring is fixed.** Options when it
+matters: separate/shorten/twist the MPU wires away from GPIO9-12, or move the MPU to
+other pins (GPIO1/48 are free and worked as I2C before) — not done, Enrico's call.
+Nothing safety-relevant uses the IMU today.
+
 ### `arm_gestures.{h,cpp}` — PCA9685/arms deferred+removed, historical reference only
 
 The PCA9685 and both arm servos have been **physically removed** from the ESP32
@@ -602,7 +631,7 @@ No existing safety behavior was weakened.
   boundary".
 - ~~INMP441 wiring~~ — **WIRED and WORKING 2026-09-18** (SCK->GPIO9, WS->GPIO10, SD->GPIO11, L/R->GND, VDD->3.3V). `firmware/esp32/inmp441_test/` uploaded; live audio levels confirmed (see the sketch's entry under Repository layout). Not integrated into `hello_ultron`.
 - ~~Speaker/amplifier wiring~~ — **WIRED and WORKING 2026-09-18**, confirmed by Enrico against the official Freenove ESP32-S3 example: the Audio Converter & Amplifier is one board (ES7148 DAC + PAM8403 amp), VCC 3.3-5.0V powered from 5V, speaker on L+/L-, SCK/MCLK not connected. Wiring: BCK->GPIO9, LCK->GPIO10 (shared with the mic's SCK/WS, intentionally), DIN->GPIO12. Bench sketch `firmware/esp32/audio_out_test/` (440 Hz beep, MCLK disabled) compiles, uploaded; Enrico confirmed a clean 440 Hz beep. **Mic + speaker full-duplex on one I2S port VERIFIED 2026-09-18** (`mic_speaker_test`): both directions coexist on the shared GPIO9/10 clocks. Recorded voice plays back intelligibly with some "old radio" character (16 kHz / 8 kHz bandwidth, mic noise floor); ~x3 playback gain is the best balance. Anything combining mic + speaker must use ONE I2S instance in full-duplex, not two instances fighting over GPIO9/10. Untested next levers if quality matters later: higher sample rate (32/44.1 kHz), noise gate/filtering.
-- ~~MPU6050 wiring and I2C pin selection~~ — **WIRED and RUNNING 2026-09-18** (VCC->5V, GND->GND, SDA->GPIO13, SCL->GPIO14). Claude uploaded `mpu6050_test` (Enrico explicitly asked) and read its serial output: I2C works, readings are sane at rest (az ~1.05 g, ax/ay ~-0.03 g, gyro ~0 dps, stable). **`WHO_AM_I` = 0x70, not 0x68** — the board is an MPU6500-family part sold as "MPU6050"; accel/gyro register map is compatible so the bench sketch works unchanged, but don't rely on the temperature value/scale, and check the ID if a library ever refuses to init. Motion test 2026-09-18 (Enrico moved it, Claude read serial, 25 s): gyro responded on all 3 axes (peaks ~+120/-60 dps X, +-62 Y, +-23 Z) and returned to ~0 at rest; accel moved (az 0.81-1.28 g, ax/ay ~+-0.2 g) and settled back to az ~1.05. Only gentle tilts were captured — a full 90 deg tilt (an axis reaching ~+-1 g) was not exercised, so gravity redistribution across axes is not fully confirmed. Not integrated into `hello_ultron` yet.
+- ~~MPU6050 wiring and I2C pin selection~~ — **WIRED, integrated as `imu.{h,cpp}` 2026-09-18**, works cleanly on its own but is corrupted by the I2S audio clocks on the current wiring — see "`imu.{h,cpp}`" section. Bench sketch `mpu6050_test` verified motion response earlier (accel/gyro respond, settle back to az ~1.05 g).
 - Decision on whether the Freenove shield's 5V rail can safely power the ESP32
   subsystem (not yet measured — do not connect until verified).
 
@@ -618,8 +647,8 @@ outstanding — status, movement, and safety-timeout visibility are all verified
 
 **Update 2026-09-18: all v1 hardware is wired and verified in bench sketches** (MPU6050,
 INMP441, amp + speaker, mic+speaker full-duplex), and the mic/speaker are integrated into
-`hello_ultron` as `audio.{h,cpp}` with continuous voice detection. Not yet integrated:
-the MPU6050 (still only `mpu6050_test`; a small `imu.{h,cpp}` is next), and the
+`hello_ultron` as `audio.{h,cpp}` with continuous voice detection. The MPU6050 is integrated too (`imu.{h,cpp}`, records shocks only, no face
+reaction, unreliable while audio runs — see above). Still open: the
 power-rail decision (can the Freenove shield's 5V power the ESP32 + amp?). After the IMU,
 the plan is the Django layer, starting with the ESP32<->Django intent contract and a fake
 server; still open decisions: LLM provider, STT (local vs cloud), TTS (local vs cloud).
