@@ -638,15 +638,27 @@ Ollama can replace it by settings only. Speed check (interleaved calls, 2026-09-
 costs ~900-1000 prompt tokens, so history is 4 turns (`ULTRON_HISTORY_TURNS`) and the fallback
 exists (a benchmark burst hit a real 429). faster-whisper `small` int8 (on the server: 1.13 s for a
 4 s utterance with `cpu_threads=8`; 1.28 s at the default 4; `medium` 3.7 s with no better
-transcript, rejected). Piper `es_ES-davefx-medium` plus a **monster voice** (`brain/voice_fx.py`,
-numpy only): pitch drop by resampling (Piper pre-compensates speed), 65 Hz growl, saturation,
-slap-back and low-end boost. Defaults `TTS_FX=monster`, `TTS_PITCH_SEMITONES=-6`,
-`TTS_GROWL=0.3`, `TTS_DRIVE=2.0`; measured pitch: plain ~130 Hz, -4 ~100 Hz, -6 ~89 Hz,
--8 ~80 Hz (samples generated for Enrico to audition; how it sounds on the ESP32 speaker is not
-yet confirmed). **Personality (Enrico asked 2026-09-18 to be insulted "for real" with darker
-jokes):** the prompt now asks for a savage roast with strong language and black humor;
-guardrails kept: nothing about protected characteristics, no real threats, never encouraging
-self-harm (drops the act if the user sounds genuinely distressed), no real harm instructions.
+transcript, rejected). Piper `es_ES-davefx-medium` with a **"deep" effect** (`brain/voice_fx.py`, numpy only), Thanos-like:
+Enrico rejected the first gritty "monster" voice twice as hard to understand on the ESP32
+speaker (measured: only 4.7% of its energy above 1.5 kHz vs 20.8% for plain Piper — consonants buried
+by saturation/growl), so distortion was removed. Voice candidates compared by pitch and Whisper
+accuracy: `davefx` is both the deepest (~121 Hz) and clearest natural voice; `es_MX-ald` (~155 Hz),
+`es_MX-claude-high` (~181 Hz) and `es_ES-carlfm-x_low` (22% word error) were worse and are only
+downloaded locally in `cerebro/var/voices`, not on the server. Chosen: pitch -3 semitones
+(~102 Hz; -4 already cost clarity, 8-10% word error) via clean resampling with speed pre-compensation,
+`TTS_LENGTH_SCALE=1.05`, presence 0.5 and low boost 0.3, no growl, no saturation (settings
+`TTS_FX=deep`, `TTS_PITCH_SEMITONES`, `TTS_LENGTH_SCALE`, `TTS_PRESENCE`, `TTS_LOW_BOOST`;
+`TTS_FX=monster` keeps the gritty mode, `none` = plain Piper). Objective proxies only; how it sounds
+on the real speaker is Enrico's call. **Personality (Enrico asked 2026-09-18 to be insulted "for
+real", with darker jokes, a Thanos-like voice and somewhat longer replies):** the prompt describes a
+tiny robot with a titan's solemnity: calm, fatalistic, measured; savage roast with strong language;
+black humor; ego, opinions, callbacks to earlier turns and grudging respect; replies of 2-3 SHORT
+sentences, 20-30 words (~9-11 s of audio; the first draft at 30-41 words gave 9-16 s of audio in one
+long semicolon sentence, too long), `ULTRON_MAX_REPLY_CHARS=260`. Guardrails kept: nothing about
+protected characteristics, no real threats, never encouraging self-harm (drops the act if the user
+sounds genuinely distressed), no real harm instructions, no verbatim film quotes. The longer prompt
+makes each turn ~1000+ tokens, so the 8000 tokens/minute limit does get hit in bursts; the
+automatic 120b->20b fallback was seen working.
 GROQ_API_KEY comes from `.env`/environment, never from code; `.env` and models are gitignored.
 
 **Transport (decided): plain HTTP.** One request per utterance because the firmware already

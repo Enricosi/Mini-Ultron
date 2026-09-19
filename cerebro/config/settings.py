@@ -94,22 +94,22 @@ STT_CPU_THREADS = env_int("STT_CPU_THREADS", 0)  # 0 = library default
 # --- TTS (Piper, local) -----------------------------------------------------------
 TTS_BACKEND = env("TTS_BACKEND", "piper")  # or "fake"
 TTS_VOICE = env("TTS_VOICE", "es_ES-davefx-medium")
-TTS_LENGTH_SCALE = env_float("TTS_LENGTH_SCALE", 1.0)  # >1 slower/deeper feel
+TTS_LENGTH_SCALE = env_float("TTS_LENGTH_SCALE", 1.05)  # >1 = slower, more solemn
 TTS_PEAK = env_float("TTS_PEAK", 0.35)  # output loudness, fraction of full scale
-# Monster voice (voice_fx.py): deeper, gravelly. TTS_FX=none for Piper's plain voice.
-TTS_FX = env("TTS_FX", "monster")
-TTS_PITCH_SEMITONES = env_float("TTS_PITCH_SEMITONES", -5.0)  # more negative = deeper
-TTS_GROWL = env_float("TTS_GROWL", 0.08)  # 0..0.6 roughness
-TTS_DRIVE = env_float("TTS_DRIVE", 0.4)  # 0 = clean, higher = more distortion (>1 hurts clarity)
+# Voice effect (voice_fx.py): "deep" = clean, solemn Thanos-like; "monster" = gritty; "none" = plain Piper.
+TTS_FX = env("TTS_FX", "deep")
+TTS_PITCH_SEMITONES = env_float("TTS_PITCH_SEMITONES", -3.0)  # more negative = deeper
+TTS_GROWL = env_float("TTS_GROWL", 0.0)  # 0..0.6 roughness
+TTS_DRIVE = env_float("TTS_DRIVE", 0.0)  # 0 = clean, higher = more distortion (>1 hurts clarity)
 TTS_LOW_BOOST = env_float("TTS_LOW_BOOST", 0.3)  # extra bass body
-TTS_PRESENCE = env_float("TTS_PRESENCE", 0.7)  # >1.5 kHz clarity; raise it if consonants are muddy
+TTS_PRESENCE = env_float("TTS_PRESENCE", 0.5)  # >1.5 kHz clarity; raise it if consonants are muddy
 
 # --- Behavior policy -----------------------------------------------------------------
 # Movement is OFF until you turn it on: the LLM may *ask* for a movement, but Django
 # drops it (movement=NONE) unless this is true. Turn on only when the robot is safe to move.
 ULTRON_ALLOW_MOVEMENT = env_bool("ULTRON_ALLOW_MOVEMENT", False)
 ULTRON_HISTORY_TURNS = env_int("ULTRON_HISTORY_TURNS", 4)  # fewer turns = fewer tokens/minute
-ULTRON_MAX_REPLY_CHARS = env_int("ULTRON_MAX_REPLY_CHARS", 200)
+ULTRON_MAX_REPLY_CHARS = env_int("ULTRON_MAX_REPLY_CHARS", 260)
 ULTRON_SAVE_DEBUG_AUDIO = env_bool("ULTRON_SAVE_DEBUG_AUDIO", True)
 ULTRON_PRELOAD = env_bool("ULTRON_PRELOAD", True)  # load STT/TTS models at server start
 

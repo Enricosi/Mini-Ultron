@@ -56,7 +56,7 @@ class PiperTTS(TTSBackend):
         self.voice_name = voice
         self.low_boost = low_boost
         self.presence = presence
-        self.fx = fx  # "monster" | "none"
+        self.fx = fx  # "deep" (clean, solemn) | "monster" (gritty) | "none"
         self.pitch_semitones = pitch_semitones
         self.growl = growl
         self.drive = drive
@@ -89,7 +89,7 @@ class PiperTTS(TTSBackend):
 
         voice = self._load()
         length_scale = self.length_scale
-        if self.fx == "monster":  # the pitch drop slows speech down; pre-compensate
+        if self.fx in ("deep", "monster"):  # the pitch drop slows speech down; pre-compensate
             length_scale *= voice_fx.pitch_ratio(self.pitch_semitones)
         config = SynthesisConfig(length_scale=length_scale)
         with self._lock:  # one synthesis at a time
@@ -99,7 +99,7 @@ class PiperTTS(TTSBackend):
         source_rate = chunks[0].sample_rate
         audio = np.concatenate([c.audio_float_array for c in chunks]).astype(np.float32)
         audio = resample(audio, source_rate, SAMPLE_RATE)
-        if self.fx == "monster":
+        if self.fx in ("deep", "monster"):
             audio = voice_fx.monster(
                 audio, SAMPLE_RATE, self.pitch_semitones, self.growl, self.drive, self.low_boost, self.presence
             )

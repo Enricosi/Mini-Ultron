@@ -48,8 +48,9 @@ don't need yet.
 
 - LLM: `LLM_PROVIDER=ollama LLM_MODEL=... ` (OpenAI-compatible `/v1/chat/completions`).
 - STT model size: `STT_MODEL=tiny|base|small|medium` — pick by the server's CPU.
-- TTS voice: `TTS_VOICE=<piper voice>`, then `fetch_models`. Monster effect: `TTS_FX=monster|none`,
-  `TTS_PITCH_SEMITONES` (-4 deep .. -8 demon), `TTS_GROWL`, `TTS_DRIVE`.
+- TTS voice: `TTS_VOICE=<piper voice>`, then `fetch_models`. Voice effect: `TTS_FX=deep|monster|none`
+  (`deep` = clean solemn Thanos-like, default), `TTS_PITCH_SEMITONES` (-3; -4 already costs clarity),
+  `TTS_LENGTH_SCALE` (pace), `TTS_PRESENCE`; `monster` mode also uses `TTS_GROWL`/`TTS_DRIVE`.
 - LLM rate limits: `LLM_FALLBACK_MODEL` is tried once on a 429 (Groq's free tier is 8000 tokens/min per model).
 
 ## Safety
