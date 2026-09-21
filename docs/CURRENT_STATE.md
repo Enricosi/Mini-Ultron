@@ -32,8 +32,8 @@ movimiento así por ahora") after explaining the LLM never controls duration/spe
 (2) Extended the LEDs from 2 states to 9 — one dim color per `FaceState`, driven by a new
 `LED:FACE:<NAME>` Pico command, wired into `face.cpp`'s `setFace()` so every face change
 (conversation state machine, debug console) syncs the shield LEDs for free. **COMPILES, UPLOADED
-to both boards — color/brightness still NEEDS Enrico's visual confirmation**, he hasn't looked
-yet. (3) Reviewed the 6 new stable docs (`architecture.md`, `hardware.md`, `communications.md`,
+to both boards, PHYSICALLY VERIFIED** — Enrico confirmed the colors are dim/correct, not
+full-brightness/white. (3) Reviewed the 6 new stable docs (`architecture.md`, `hardware.md`, `communications.md`,
 `safety.md`, `setup.md`, `development.md`) against the actual firmware (spot-checked ultrasonic
 TRIG=4/ECHO=5 and line-tracker 10/11/12 pins — both correct) and fixed the 3 that had gone stale
 from the LED change. (4) Finished the license/secrets audit: `THIRD_PARTY_LICENSES.md` created.
@@ -56,10 +56,10 @@ configurable (`STT_BEAM_SIZE`, new default `5`, was hardcoded `1`) and deployed.
 fully eliminate the garbling (small sample), but a real, evidence-based improvement with
 essentially free latency cost on this hardware — worth re-evaluating if garbling recurs.
 
-**Still open, in rough priority:** (a) Enrico's visual confirmation of the LED colors/brightness;
-(b) the actual floor test of locomotion (today's test was movement-verified but not a full
-floor/distance test — same preconditions as before: clear area, Enrico beside it); (c) legal
-review of the Piper GPL question; (d) confirm the `STT_BEAM_SIZE=5` change actually reduces
+**Still open, in rough priority:** (a) the actual floor test of locomotion (today's test was
+movement-verified but not a full floor/distance test — same preconditions as before: clear
+area, Enrico beside it); (b) legal review of the Piper GPL question; (c) confirm the
+`STT_BEAM_SIZE=5` change actually reduces
 real-world garbling over more conversations (only measured on 3 synthetic phrases so far).
 Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
 and integrated (`audio.{h,cpp}`, `imu.{h,cpp}`); **CEREBRO v0.1 (Django brain) built and deployed on the
@@ -906,17 +906,15 @@ No existing safety behavior was weakened.
 **As of 2026-09-21 (current):** brain-driven movement is back ON (server
 `ULTRON_ALLOW_MOVEMENT=1`, ESP32 flashed with `-DMINI_ULTRON_BRAIN_MOVEMENT=1`) and
 Enrico confirmed it moves correctly by voice — **left ON, not reverted this time**
-(Enrico's call: "dejemos el movimiento así por ahora"). Next concrete steps, in
-priority order:
-1. **Enrico looks at the LEDs** — uploaded and running (9 emotion colors via
-   `LED:FACE:<NAME>`), but nobody has visually confirmed the colors/brightness are
-   what was intended (dim, not full-brightness/white).
-2. **The actual floor test** — today's movement test was voice-command movement
+(Enrico's call: "dejemos el movimiento así por ahora"). The 9-color emotion LEDs
+(`LED:FACE:<NAME>`) are uploaded and **Enrico visually confirmed them dim/correct,
+not full-brightness/white.** Next concrete steps, in priority order:
+1. **The actual floor test** — today's movement test was voice-command movement
    verified again, not a fresh floor/distance test; the floor-test preconditions
    below still apply.
-3. **Legal review of the Piper GPL question** — see `THIRD_PARTY_LICENSES.md`;
+2. **Legal review of the Piper GPL question** — see `THIRD_PARTY_LICENSES.md`;
    blocks commercial/open-source release, not day-to-day use.
-4. Watch STT accuracy over more conversations — `STT_BEAM_SIZE` raised from 1 to 5
+3. Watch STT accuracy over more conversations — `STT_BEAM_SIZE` raised from 1 to 5
    (deployed 2026-09-21) after measuring a real mishearing fixed at negligible
    latency cost, but only tested on 3 synthetic phrases so far.
 
