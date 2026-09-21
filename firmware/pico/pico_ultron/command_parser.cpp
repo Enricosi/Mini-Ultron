@@ -4,6 +4,7 @@
 #include "safety_controller.h"
 #include "sensors.h"
 #include "neck_controller.h"
+#include "led_controller.h"
 
 static void handleLine(const String &line, Stream &port) {
   if (line.length() == 0) return;
@@ -39,6 +40,18 @@ static void handleLine(const String &line, Stream &port) {
   }
   String verb = line.substring(0, firstColon);
   String rest = line.substring(firstColon + 1);
+
+  if (verb == "LED") {
+    bool recognized = (rest == "ON" || rest == "OFF");
+    if (!recognized) {
+      port.println("ERR:PARSE");
+      return;
+    }
+    safetyNoteCommandReceived();
+    ledSetState(rest == "ON" ? LED_READY : LED_OFF);
+    port.println("OK");
+    return;
+  }
 
   if (verb == "NECK") {
     bool recognized = (rest == "CENTER" || rest == "LEFT" || rest == "RIGHT");

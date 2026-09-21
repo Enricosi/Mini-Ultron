@@ -8,6 +8,7 @@
     MOVE:LEFT:<0-100>  MOVE:RIGHT:<0-100>   (strafe)
     ROTATE:L:<0-100>   ROTATE:R:<0-100>     (rotate in place)
     NECK:CENTER        NECK:LEFT           NECK:RIGHT
+    LED:ON             LED:OFF             (car-shield WS2812 status LEDs)
     STOP
     STATUS
     PING

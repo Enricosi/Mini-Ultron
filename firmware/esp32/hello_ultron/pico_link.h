@@ -38,6 +38,10 @@ void picoNeckCenter();
 void picoNeckLeft();
 void picoNeckRight();
 
+// --- car-shield WS2812 status LEDs (mirrors the Pico's LED protocol) ---
+void picoLedOn();
+void picoLedOff();
+
 // --- last known state, updated by picoLinkPoll() from Pico responses ---
 enum PicoResponseType {
   PICO_RESP_NONE,

@@ -20,6 +20,7 @@
 #include "safety_controller.h"
 #include "sensors.h"
 #include "neck_controller.h"
+#include "led_controller.h"
 #include "command_parser.h"
 
 static CommandParserState usbParserState;
@@ -36,6 +37,7 @@ void setup() {
   safetyInit();
   commandParserInit(usbParserState);
   commandParserInit(uartParserState);
+  ledControllerInit();    // cosmetic only, initialized last: signals boot/safety init is done
 
   Serial.println("READY");
 }

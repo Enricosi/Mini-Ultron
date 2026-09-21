@@ -149,3 +149,11 @@ void picoNeckLeft() {
 void picoNeckRight() {
     sendLine("NECK:RIGHT");
 }
+
+void picoLedOn() {
+    sendLine("LED:ON");
+}
+
+void picoLedOff() {
+    sendLine("LED:OFF");
+}

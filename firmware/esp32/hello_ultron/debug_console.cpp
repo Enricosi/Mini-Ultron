@@ -15,7 +15,7 @@ static void printHelp() {
     Serial.println(F(
         "Mini-Ultron debug console - full commands, newline-terminated:\n"
         "  FACE:IDLE|ANGRY|LISTENING|THINKING|SPEAKING|SURPRISED|SUSPICIOUS|SLEEPING|GLITCH\n"
-        "  PICO:PING | PICO:STOP | PICO:STATUS | PICO:LAST\n"
+        "  PICO:PING | PICO:STOP | PICO:STATUS | PICO:LAST | PICO:LED:ON | PICO:LED:OFF\n"
         "  NECK:CENTER | NECK:LEFT | NECK:RIGHT\n"
         "  MOVE:FWD:<0-100> | MOVE:BACK:<0-100> | MOVE:LEFT:<0-100> | MOVE:RIGHT:<0-100>\n"
         "  ROTATE:L:<0-100> | ROTATE:R:<0-100>\n"
@@ -72,6 +72,8 @@ static void handlePico(const String &action) {
         Serial.println(picoLastLineBits());
         return;
     }
+    else if (action == "LED:ON") picoLedOn();
+    else if (action == "LED:OFF") picoLedOff();
     else {
         Serial.println("ERR:PARSE");
         return;
