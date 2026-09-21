@@ -47,14 +47,21 @@ committed). (5) Diagnosed an "it's not listening to me, answers something else" 
 logs showed the model answering correctly (including the name question, twice) whenever STT
 transcribed cleanly, but STT badly mangled a few nearby utterances (e.g. "¿Te conoces ni vos?"
 for what was presumably a different real question) — **this is an STT accuracy issue under
-current live conditions, not a personality/logic regression.** Not yet root-caused further
-(mic distance/background noise suspected, not measured).
+current live conditions, not a personality/logic regression.** Root cause found and fixed:
+`FasterWhisperSTT` was hardcoded to greedy decoding (`beam_size=1`, chosen for speed).
+Measured `beam_size=1` vs `5` on the actual home-lab server with a Piper→Whisper loopback
+(3 phrases): **+30-80ms, noise-level against the ~1s STT budget — and beam=5 correctly heard
+"Muévete hacia la izquierda" where beam=1 heard "Múdete hacia la izquierda."** Made it
+configurable (`STT_BEAM_SIZE`, new default `5`, was hardcoded `1`) and deployed. Not proven to
+fully eliminate the garbling (small sample), but a real, evidence-based improvement with
+essentially free latency cost on this hardware — worth re-evaluating if garbling recurs.
 
 **Still open, in rough priority:** (a) Enrico's visual confirmation of the LED colors/brightness;
 (b) the actual floor test of locomotion (today's test was movement-verified but not a full
 floor/distance test — same preconditions as before: clear area, Enrico beside it); (c) legal
-review of the Piper GPL question; (d) the occasional STT garbling — worth watching, not yet
-investigated further. Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
+review of the Piper GPL question; (d) confirm the `STT_BEAM_SIZE=5` change actually reduces
+real-world garbling over more conversations (only measured on 3 synthetic phrases so far).
+Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
 and integrated (`audio.{h,cpp}`, `imu.{h,cpp}`); **CEREBRO v0.1 (Django brain) built and deployed on the
 home-lab mini server**; the robot holds spoken conversations with it (~1.7-2.1 s from end of speech to
 start of reply audio); brain-driven movement verified with the wheels in the air and then switched
@@ -909,9 +916,9 @@ priority order:
    below still apply.
 3. **Legal review of the Piper GPL question** — see `THIRD_PARTY_LICENSES.md`;
    blocks commercial/open-source release, not day-to-day use.
-4. Keep an eye on STT accuracy — a few utterances garbled badly in one session
-   (2026-09-21) with no clear cause found yet (mic distance/background noise
-   suspected).
+4. Watch STT accuracy over more conversations — `STT_BEAM_SIZE` raised from 1 to 5
+   (deployed 2026-09-21) after measuring a real mishearing fixed at negligible
+   latency cost, but only tested on 3 synthetic phrases so far.
 
 **As of 2026-09-15, the whole chain is verified for the first time**: neck centers
 correctly, all 4 wheels spin with correct direction in every command, and the
