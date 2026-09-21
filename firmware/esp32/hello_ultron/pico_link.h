@@ -41,6 +41,10 @@ void picoNeckRight();
 // --- car-shield WS2812 status LEDs (mirrors the Pico's LED protocol) ---
 void picoLedOn();
 void picoLedOff();
+// Mirrors the OLED face on the shield's WS2812 LEDs. faceName must be one of
+// the 9 FaceState names (face.h) - anything else is dropped, never forwarded
+// raw, matching the Pico's fixed LED:FACE:<NAME> vocabulary.
+void picoLedFace(const char *faceName);
 
 // --- last known state, updated by picoLinkPoll() from Pico responses ---
 enum PicoResponseType {

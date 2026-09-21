@@ -9,6 +9,7 @@
     ROTATE:L:<0-100>   ROTATE:R:<0-100>     (rotate in place)
     NECK:CENTER        NECK:LEFT           NECK:RIGHT
     LED:ON             LED:OFF             (car-shield WS2812 status LEDs)
+    LED:FACE:<NAME>    same 9 names as the ESP32's FaceState (e.g. LED:FACE:ANGRY)
     STOP
     STATUS
     PING

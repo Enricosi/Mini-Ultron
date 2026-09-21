@@ -157,3 +157,7 @@ void picoLedOn() {
 void picoLedOff() {
     sendLine("LED:OFF");
 }
+
+void picoLedFace(const char *faceName) {
+    sendLine(String("LED:FACE:") + faceName);
+}

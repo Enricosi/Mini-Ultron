@@ -2,6 +2,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1331.h>
 #include <SPI.h>
+#include "pico_link.h"
 
 // OLED wiring - VERIFIED, do not change without updating docs/CURRENT_STATE.md.
 static const int OLED_SCLK = 47;
@@ -193,6 +194,22 @@ void setFace(FaceState newState) {
     currentState = newState;
     resetTimersForState(millis());
     drawStateFrame(currentState);
+    picoLedFace(faceStateName(currentState));  // shield LEDs mirror the OLED "emotion"
+}
+
+const char *faceStateName(FaceState state) {
+    switch (state) {
+        case FACE_IDLE: return "IDLE";
+        case FACE_ANGRY: return "ANGRY";
+        case FACE_LISTENING: return "LISTENING";
+        case FACE_THINKING: return "THINKING";
+        case FACE_SPEAKING: return "SPEAKING";
+        case FACE_SURPRISED: return "SURPRISED";
+        case FACE_SUSPICIOUS: return "SUSPICIOUS";
+        case FACE_SLEEPING: return "SLEEPING";
+        case FACE_GLITCH: return "GLITCH";
+    }
+    return "IDLE";
 }
 
 static void updateBlinkAndLook(unsigned long now) {

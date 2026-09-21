@@ -42,14 +42,22 @@ static void handleLine(const String &line, Stream &port) {
   String rest = line.substring(firstColon + 1);
 
   if (verb == "LED") {
-    bool recognized = (rest == "ON" || rest == "OFF");
-    if (!recognized) {
-      port.println("ERR:PARSE");
+    if (rest == "ON" || rest == "OFF") {
+      safetyNoteCommandReceived();
+      ledSetState(rest == "ON" ? LED_IDLE : LED_OFF);
+      port.println("OK");
       return;
     }
-    safetyNoteCommandReceived();
-    ledSetState(rest == "ON" ? LED_READY : LED_OFF);
-    port.println("OK");
+    if (rest.startsWith("FACE:")) {
+      LedState state;
+      if (ledStateForFaceName(rest.substring(5), &state)) {
+        safetyNoteCommandReceived();
+        ledSetState(state);
+        port.println("OK");
+        return;
+      }
+    }
+    port.println("ERR:PARSE");
     return;
   }
 

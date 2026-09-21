@@ -27,5 +27,6 @@ void faceInit();                     // begins the display, draws the boot state
 void setFace(FaceState newState);    // switches expressive state, redraws immediately
 FaceState getFace();
 void faceUpdate(unsigned long now);  // call every loop() iteration - non-blocking
+const char *faceStateName(FaceState state);  // canonical name, e.g. "ANGRY"
 
 #endif
