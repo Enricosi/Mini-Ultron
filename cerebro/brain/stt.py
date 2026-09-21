@@ -71,6 +71,7 @@ class FasterWhisperSTT(STTBackend):
         cpu_threads: int,
         download_root: str,
         initial_prompt: str = "",
+        beam_size: int = 1,
     ):
         self.initial_prompt = initial_prompt
         self.model_name = model
@@ -78,6 +79,7 @@ class FasterWhisperSTT(STTBackend):
         self.compute_type = compute_type
         self.cpu_threads = cpu_threads
         self.download_root = download_root
+        self.beam_size = beam_size  # 1 = greedy (fastest); higher trades latency for accuracy
         self._model = None
         self._lock = threading.Lock()
 
@@ -106,7 +108,7 @@ class FasterWhisperSTT(STTBackend):
             segments, info = model.transcribe(
                 audio,
                 language=self.language,
-                beam_size=1,
+                beam_size=self.beam_size,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500},
                 condition_on_previous_text=False,

@@ -90,6 +90,10 @@ STT_MODEL = env("STT_MODEL", "small")  # tiny/base/small/medium/large-v3...
 STT_LANGUAGE = env("STT_LANGUAGE", "es")  # empty = auto-detect
 STT_COMPUTE_TYPE = env("STT_COMPUTE_TYPE", "int8")
 STT_CPU_THREADS = env_int("STT_CPU_THREADS", 0)  # 0 = library default
+# 1 = greedy decoding (fastest); raising it trades latency for transcription accuracy.
+# 5 measured ~30-80ms slower than 1 on the home-lab server's CPU (noise-level against the
+# ~1s STT budget) but fixed a real mishearing ("Múdete" -> "Muévete") that beam=1 didn't.
+STT_BEAM_SIZE = env_int("STT_BEAM_SIZE", 5)
 # Biases Whisper toward the robot's command words (a real test misheard "muévete" as "muera").
 # Empty = off. Transcripts that merely echo this prompt are dropped.
 STT_INITIAL_PROMPT = env(
