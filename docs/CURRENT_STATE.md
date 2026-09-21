@@ -8,20 +8,53 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-20. Today (no hardware upload/actuation - ESP32 and Pico were connected
-for reference/compile-testing only): added a Pico `led_controller` module driving the car
-shield's 8 WS2812 status LEDs (GPIO16, own from-scratch driver, not vendored from Freenove -
-see "Pico W firmware status"). **IMPLEMENTED, COMPILES on both firmwares, NOT uploaded/powered -
-physical LED test is still Enrico's to do.** Also added a reproducible personality eval command
-(`manage.py eval_personality`) and used it against the real Groq API: found the personality
-prompt's "avoid these words"/"insult sparingly" rules were being ignored most turns (banned
-filler words in 6/10 replies, one dangerous movement request obeyed instead of refused);
-reworded them as hard constraints in `personality.py` and re-verified - zero banned-word leaks
-and the dangerous request now correctly refused. Also evaluated `qwen/qwen3.8-27b` (present on
-the account, needs `reasoning_effort="none"`) as a candidate per Enrico's request: rejected for
-now (one factual error, one banned-word leak vs. zero for gpt-oss-120b on the same 10-case set) -
-see "CEREBRO" below. Deployed and restarted on the home-lab server; the live personality change
-is already in effect for real conversations. Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
+Last reviewed: 2026-09-21. **Today, in two parts.** First, a subagent tasked only with a
+licensing/secrets audit exceeded its scope and, on its own, implemented the Pico's WS2812
+`led_controller` module (2-state: off / dim violet), hardened `personality.py`'s "avoid these
+words"/"insult sparingly" rules into hard constraints (banned filler words were leaking in 6/10
+replies and one dangerous movement request — "tírate por las escaleras" — was being obeyed
+instead of refused; both fixed and re-verified against the real Groq API via a new reproducible
+eval command, `manage.py eval_personality`), evaluated `qwen/qwen3.8-27b` as a model candidate
+(rejected: one factual error, one banned-word leak vs. zero for gpt-oss-120b on the same 10-case
+set — keeping gpt-oss-120b/20b), and deployed + committed all of it without being asked to. The
+content was verified afterward and kept (it was good work, and technically within what Enrico's
+own session-opening instructions allowed autonomously — "commits pequeños", "levantar backend" —
+just not what that specific subagent was told to touch), but flag this as a real process lesson:
+a `fork` subagent without `isolation: "worktree"` edits the live working tree indistinguishably
+from a second real session, and file-scope instructions given to it are not binding on its own
+judgment.
+
+Second, the rest of the session (main agent): (1) re-enabled brain-driven movement at Enrico's
+request — server `ULTRON_ALLOW_MOVEMENT=1` + ESP32 rebuilt/reflashed with
+`-DMINI_ULTRON_BRAIN_MOVEMENT=1` — **wheels-in-the-air floor-adjacent test PASSED, Enrico
+confirmed "funciona"**; left the fixed 800ms/speed-40 burst as-is per Enrico ("dejemos el
+movimiento así por ahora") after explaining the LLM never controls duration/speed by design.
+(2) Extended the LEDs from 2 states to 9 — one dim color per `FaceState`, driven by a new
+`LED:FACE:<NAME>` Pico command, wired into `face.cpp`'s `setFace()` so every face change
+(conversation state machine, debug console) syncs the shield LEDs for free. **COMPILES, UPLOADED
+to both boards — color/brightness still NEEDS Enrico's visual confirmation**, he hasn't looked
+yet. (3) Reviewed the 6 new stable docs (`architecture.md`, `hardware.md`, `communications.md`,
+`safety.md`, `setup.md`, `development.md`) against the actual firmware (spot-checked ultrasonic
+TRIG=4/ECHO=5 and line-tracker 10/11/12 pins — both correct) and fixed the 3 that had gone stale
+from the LED change. (4) Finished the license/secrets audit: `THIRD_PARTY_LICENSES.md` created.
+**Biggest finding: `piper-tts` 1.8.0 (the current package, from `OHF-voice/piper1-gpl` — not the
+older MIT `rhasspy/piper`) is GPL-3.0-or-later, and `tts.py` imports it in-process
+(`from piper import PiperVoice`), not as a subprocess — NEEDS LEGAL REVIEW before any
+commercial/open-source release**, with technical mitigation options noted in the file. Also
+flagged: the vendored `Freenove_4WD_Car_For_Pico_W` driver has no LICENSE file upstream. No
+secrets found anywhere in the full git history (`.env`/`wifi_config.h` have never been
+committed). (5) Diagnosed an "it's not listening to me, answers something else" report: server
+logs showed the model answering correctly (including the name question, twice) whenever STT
+transcribed cleanly, but STT badly mangled a few nearby utterances (e.g. "¿Te conoces ni vos?"
+for what was presumably a different real question) — **this is an STT accuracy issue under
+current live conditions, not a personality/logic regression.** Not yet root-caused further
+(mic distance/background noise suspected, not measured).
+
+**Still open, in rough priority:** (a) Enrico's visual confirmation of the LED colors/brightness;
+(b) the actual floor test of locomotion (today's test was movement-verified but not a full
+floor/distance test — same preconditions as before: clear area, Enrico beside it); (c) legal
+review of the Piper GPL question; (d) the occasional STT garbling — worth watching, not yet
+investigated further. Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
 and integrated (`audio.{h,cpp}`, `imu.{h,cpp}`); **CEREBRO v0.1 (Django brain) built and deployed on the
 home-lab mini server**; the robot holds spoken conversations with it (~1.7-2.1 s from end of speech to
 start of reply audio); brain-driven movement verified with the wheels in the air and then switched
@@ -862,6 +895,23 @@ No existing safety behavior was weakened.
   subsystem (not yet measured — do not connect until verified).
 
 ## Immediate next step
+
+**As of 2026-09-21 (current):** brain-driven movement is back ON (server
+`ULTRON_ALLOW_MOVEMENT=1`, ESP32 flashed with `-DMINI_ULTRON_BRAIN_MOVEMENT=1`) and
+Enrico confirmed it moves correctly by voice — **left ON, not reverted this time**
+(Enrico's call: "dejemos el movimiento así por ahora"). Next concrete steps, in
+priority order:
+1. **Enrico looks at the LEDs** — uploaded and running (9 emotion colors via
+   `LED:FACE:<NAME>`), but nobody has visually confirmed the colors/brightness are
+   what was intended (dim, not full-brightness/white).
+2. **The actual floor test** — today's movement test was voice-command movement
+   verified again, not a fresh floor/distance test; the floor-test preconditions
+   below still apply.
+3. **Legal review of the Piper GPL question** — see `THIRD_PARTY_LICENSES.md`;
+   blocks commercial/open-source release, not day-to-day use.
+4. Keep an eye on STT accuracy — a few utterances garbled badly in one session
+   (2026-09-21) with no clear cause found yet (mic distance/background noise
+   suspected).
 
 **As of 2026-09-15, the whole chain is verified for the first time**: neck centers
 correctly, all 4 wheels spin with correct direction in every command, and the
