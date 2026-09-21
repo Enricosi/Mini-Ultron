@@ -58,8 +58,10 @@ robot at all, and the Pico's watchdog/obstacle veto still apply regardless.
   only ever calls the vendored `Servo_1_Angle()` with one of three fixed constants
   (itself clamped 30-150° inside the vendored function). There is no code path from
   either protocol to an arbitrary angle.
-- The LED protocol (`LED:ON`/`LED:OFF`) only reaches two fixed states
-  (`LED_OFF`/`LED_READY`); there is no raw-RGB command anywhere in the stack.
+- The LED protocol (`LED:ON`/`LED:OFF`/`LED:FACE:<NAME>`) only reaches a fixed set of
+  named states, one per `FaceState` plus off; there is no raw-RGB command anywhere in
+  the stack, and global brightness is capped in firmware (`LED_BRIGHTNESS`) so no
+  command can drive the strip to full brightness/white.
 
 ## Watchdog / communication loss
 

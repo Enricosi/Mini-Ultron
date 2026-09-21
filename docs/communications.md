@@ -62,6 +62,7 @@ MOVE:LEFT:<0-100>   MOVE:RIGHT:<0-100>   (strafe)
 ROTATE:L:<0-100>    ROTATE:R:<0-100>     (rotate in place)
 NECK:CENTER         NECK:LEFT            NECK:RIGHT
 LED:ON              LED:OFF              (car-shield WS2812 status LEDs)
+LED:FACE:<NAME>     same 9 names as the ESP32's FaceState, e.g. LED:FACE:ANGRY
 STOP
 STATUS
 PING
@@ -88,7 +89,9 @@ Any line that doesn't match exactly one of the inbound shapes above returns
 The rest of the ESP32 firmware never builds a raw protocol line itself; it only calls
 `picoPing/Stop/Status()`, `picoMoveForward/Backward/Left/Right(speedPercent)`,
 `picoRotateLeft/Right(speedPercent)`, `picoNeckCenter/Left/Right()`,
-`picoLedOn/Off()`. Speed is clamped 0-100 before it's ever formatted into a line.
+`picoLedOn/Off()`, `picoLedFace(faceName)` (called once, from inside `face.cpp`'s
+`setFace()`, so every face change syncs the shield LEDs with no extra call sites).
+Speed is clamped 0-100 before it's ever formatted into a line.
 There is no function in this module that accepts an arbitrary string, so nothing
 upstream — including a bug in the Django/LLM layer — has a code path to smuggle a raw
 command to the Pico.

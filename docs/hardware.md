@@ -49,7 +49,7 @@ physically on the robot; it talks to the ESP32 over Wi-Fi/HTTP.
 | Front/neck servo | PWM (vendored `Servo_1_Angle`) | GPIO13 | shield servo rail | IMPLEMENTED, PHYSICALLY TESTED (centers correctly) | Wired to the shield's own servo header — **not** the ESP32/PCA9685. Only 3 named positions reachable from firmware (`NECK_CENTER/LEFT/RIGHT`), never a raw angle |
 | HC-SR04 ultrasonic | Trig/Echo | TRIG=4, ECHO=5 | 5V | IMPLEMENTED, used for the forward-obstacle veto | `safetyForwardBlocked()` only gates `MOVE:FWD` |
 | 3-channel line tracker | Digital | LEFT=12, CENTER=11, RIGHT=10 | shield logic rail | IMPLEMENTED | Not currently used for any decision, only reported over `STATUS` |
-| WS2812 status LEDs (8 LEDs) | Single-wire (Adafruit NeoPixel) | GPIO16 | shield 5V rail | IMPLEMENTED, COMPILES, **NOT uploaded/physically tested** | New 2026-09-20, own driver (`led_controller.{h,cpp}`), not vendored from Freenove's WS2812 helper. Two named states only (off / dim violet "ready") |
+| WS2812 status LEDs (8 LEDs) | Single-wire (Adafruit NeoPixel) | GPIO16 | shield 5V rail | IMPLEMENTED, COMPILES, UPLOADED — color/brightness **NEEDS Enrico's visual confirmation** | Own driver (`led_controller.{h,cpp}`), not vendored from Freenove's WS2812 helper. Mirrors the ESP32's 9 `FaceState` values, one fixed dim color each (`LED:FACE:<NAME>`), plus manual `LED:ON`/`LED:OFF` |
 | 2x 18650 Li-ion cells | — | — | ~7.4V nominal | AVAILABLE, used for locomotion tests | Powers the shield/motors; ESP32 power source and rail sharing not yet fully verified — see "Open power questions" below |
 
 Freenove's own vendored driver (`Freenove_4WD_Car_For_Pico_W.{h,cpp}`) additionally
