@@ -21,6 +21,15 @@ PROVIDER_PRESETS = {
     "openai_compat": {"base_url": "", "token_param": "max_tokens"},
 }
 
+# Model families known to accept an OpenAI-style "reasoning_effort" field (hybrid
+# thinking/non-thinking models). Sending it to a model that doesn't understand it
+# risks a rejected request, so this stays an explicit allowlist, not a blind send.
+_REASONING_EFFORT_MODEL_PREFIXES = ("gpt-oss", "qwen")
+
+
+def _supports_reasoning_effort(model: str) -> bool:
+    return any(prefix in model for prefix in _REASONING_EFFORT_MODEL_PREFIXES)
+
 
 class LLMError(RuntimeError):
     """The LLM call failed (network, timeout, HTTP error, empty answer)."""
@@ -92,7 +101,7 @@ class OpenAICompatLLM(LLMBackend):
             }
         elif structured == "json_object":
             payload["response_format"] = {"type": "json_object"}
-        if self.reasoning_effort and "gpt-oss" in model:
+        if self.reasoning_effort and _supports_reasoning_effort(model):
             payload["reasoning_effort"] = self.reasoning_effort
             payload["include_reasoning"] = False
         return payload
