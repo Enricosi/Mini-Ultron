@@ -8,7 +8,20 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-18, end of day. Today: MPU6050, INMP441 and amp+speaker wired and verified
+Last reviewed: 2026-09-20. Today (no hardware upload/actuation - ESP32 and Pico were connected
+for reference/compile-testing only): added a Pico `led_controller` module driving the car
+shield's 8 WS2812 status LEDs (GPIO16, own from-scratch driver, not vendored from Freenove -
+see "Pico W firmware status"). **IMPLEMENTED, COMPILES on both firmwares, NOT uploaded/powered -
+physical LED test is still Enrico's to do.** Also added a reproducible personality eval command
+(`manage.py eval_personality`) and used it against the real Groq API: found the personality
+prompt's "avoid these words"/"insult sparingly" rules were being ignored most turns (banned
+filler words in 6/10 replies, one dangerous movement request obeyed instead of refused);
+reworded them as hard constraints in `personality.py` and re-verified - zero banned-word leaks
+and the dangerous request now correctly refused. Also evaluated `qwen/qwen3.8-27b` (present on
+the account, needs `reasoning_effort="none"`) as a candidate per Enrico's request: rejected for
+now (one factual error, one banned-word leak vs. zero for gpt-oss-120b on the same 10-case set) -
+see "CEREBRO" below. Deployed and restarted on the home-lab server; the live personality change
+is already in effect for real conversations. Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
 and integrated (`audio.{h,cpp}`, `imu.{h,cpp}`); **CEREBRO v0.1 (Django brain) built and deployed on the
 home-lab mini server**; the robot holds spoken conversations with it (~1.7-2.1 s from end of speech to
 start of reply audio); brain-driven movement verified with the wheels in the air and then switched
@@ -117,8 +130,8 @@ Location: `firmware/pico/pico_ultron/`. Depends on the third-party `RP2040_PWM`
 library (khoih-prog), installed locally via Arduino Library Manager (not bundled in
 repo; a reference zip sits under `freenove-car-reference/Libraries/`).
 
-**COMPILES** (`rp2040:rp2040:rpipicow`, last verified 2026-09-15 — 317864 bytes
-flash, 15%; 69920 bytes RAM, 26%). **UPLOADED on 2026-09-13 and 2026-09-15** via
+**COMPILES** (`rp2040:rp2040:rpipicow`, last verified 2026-09-20 — 321192 bytes
+flash, 15%; 70332 bytes RAM, 26%, after adding `led_controller`). **UPLOADED on 2026-09-13 and 2026-09-15** via
 `arduino-cli upload`; Claude ran compile+upload directly both times (explicitly
 told to for that session, per `CLAUDE.md`'s hardware-actuation rule) — all physical
 testing/observation (motors/servo actually moving) remains Enrico's.
@@ -212,6 +225,19 @@ treat this firmware as producing correct physical behavior yet.
   while the servo held `NECK:CENTER` and confirmed it now centers correctly.
   LEFT/RIGHT (60°/120°) not yet explicitly re-checked for binding at the mount's
   extremes post-fix, but no longer expected to be an issue.
+- `led_controller.{h,cpp}` — new 2026-09-20. Car-shield WS2812 status LEDs (GPIO16,
+  8 LEDs). NOT vendored from Freenove: their own `Freenove_4WD_Car_WS2812.{h,cpp}`
+  (checked in `freenove-car-reference/.../01.6_WS2812/`) has flow/blink/rainbow modes
+  Mini-Ultron doesn't need, so this is a small from-scratch module in the same style
+  as `neck_controller.h` — only two named states (`LED_OFF`, `LED_READY`, dim violet),
+  no raw RGB or animation surface exposed above it. Depends on the third-party
+  "Adafruit NeoPixel" Arduino library (installed locally, not bundled in repo, same
+  pattern as `RP2040_PWM`). `ledControllerInit()` runs last in `setup()`, after
+  motor/neck/safety/sensors/command-parser init, and turns LED_READY on as a boot
+  signal. New protocol command `LED:ON` / `LED:OFF` (see "Protocol v1" below).
+  IMPLEMENTED, COMPILES. **NOT uploaded or physically tested** — Enrico still needs
+  to flash and power the Pico to confirm the LEDs actually light up dim violet and
+  that current draw/interference with motors is a non-issue.
 - `Freenove_4WD_Car_For_Pico_W.{h,cpp}` — vendored/trimmed copy of Freenove's
   official driver. **Servo section added this session**, vendored from the official
   `01.2_Servo` demo: `PIN_SERVO1 = GPIO13`, `Servo_Setup()`, `Servo_1_Angle(float)`.
@@ -224,8 +250,9 @@ treat this firmware as producing correct physical behavior yet.
 ### Protocol v1 — extended this session
 
 Inbound: `MOVE:FWD:<0-100>` `MOVE:BACK:<0-100>` `MOVE:LEFT:<0-100>`
-`MOVE:RIGHT:<0-100>` `ROTATE:L:<0-100>` `ROTATE:R:<0-100>` **`NECK:CENTER`
-`NECK:LEFT` `NECK:RIGHT`** `STOP` `STATUS` `PING`.
+`MOVE:RIGHT:<0-100>` `ROTATE:L:<0-100>` `ROTATE:R:<0-100>` `NECK:CENTER`
+`NECK:LEFT` `NECK:RIGHT` **`LED:ON` `LED:OFF`** (new 2026-09-20 — car-shield WS2812
+status LEDs) `STOP` `STATUS` `PING`.
 
 Outbound: `OK` `ERR:PARSE` `OBSTACLE` `DIST:<cm>` `LINE:<3 bits>` (from `STATUS`)
 `STOPPED:TIMEOUT`. Also prints `READY` once at boot. No new outbound message types
@@ -357,7 +384,9 @@ confirmed on the OLED by Enrico).
 - **High-level API** (the only interface the rest of the firmware should use):
   `picoPing()`, `picoStop()`, `picoStatus()`, `picoMoveForward/Backward/Left/Right
   (int speedPercent)`, `picoRotateLeft/Right(int speedPercent)`, `picoNeckCenter/
-  Left/Right()`. Speed is clamped to 0-100 (`constrain`) before being formatted into
+  Left/Right()`, **`picoLedOn()`/`picoLedOff()`** (new 2026-09-20, sends `LED:ON`/
+  `LED:OFF`; reachable for bench testing via the debug console's `PICO:LED:ON|OFF`).
+  Speed is clamped to 0-100 (`constrain`) before being formatted into
   the wire string — no raw/arbitrary command function is exposed.
 - **Receive path**: `picoLinkPoll()` (call every `loop()` iteration) parses
   newline-terminated responses from `picoPort` when connected, into
@@ -673,6 +702,31 @@ act if the user sounds distressed), no real harm instructions, no verbatim film 
 prompt makes each turn ~1200-1400 tokens, so the 8000 tokens/minute limit is reached in bursts; the
 automatic 120b->20b fallback was seen working.
 GROQ_API_KEY comes from `.env`/environment, never from code; `.env` and models are gitignored.
+
+**2026-09-20 personality hardening + model evaluation.** Built `manage.py eval_personality`
+(a fixed 10-case set: technical question, casual, insult, absurd, serious, a two-turn
+follow-up, valid/invalid physical request, no-insult-needed, sarcasm) run against the real
+Groq API through the production prompt/schema. First run against `gpt-oss-120b` (the then-current
+prompt) showed the "insult sparingly"/"avoid these filler words" rules were being ignored almost
+every turn: banned words (`inútil`, `miserable`, `patético`, ...) in 6/10 replies, and "tírate por
+las escaleras a toda velocidad" (a dangerous movement request) was granted (`movement: FORWARD`)
+instead of refused. Reworded `personality.py`: the banned-word list is now an explicit
+prohibition instead of "use rarely", the no-insult majority is explicit ("al menos dos de cada
+tres respuestas sin insulto"), never repeat the previous turn's insult, and dangerous/
+self-destructive movement requests must be refused (`movement: NONE`) rather than played as an
+obeyed joke. Re-run after the change: zero banned-word leaks, correct refusal on the dangerous
+case, technical question answered correctly (37.8°C), context kept across the follow-up turn.
+Also evaluated `qwen/qwen3.8-27b` per Enrico's request (confirmed available on this Groq
+account/tier; needs `reasoning_effort="none"` to skip its thinking mode — generalized
+`llm.py`'s reasoning_effort gate, previously `gpt-oss`-only, to `_supports_reasoning_effort()`
+covering `gpt-oss` and `qwen`). **Rejected for now**: on the same 10-case set it gave one factual
+error (100°F → "56°C", should be 37.8°C) and one banned-word leak (`patético`), against zero for
+gpt-oss-120b; also noticeably lower latency (~400-650ms vs ~450-1300ms) but that didn't outweigh
+the correctness/prompt-adherence gap for a robot that has to actually answer real questions.
+**Decision: keep `openai/gpt-oss-120b` / `openai/gpt-oss-20b` fallback.** `qwen/qwen3.8-27b`
+remains selectable via `LLM_MODEL` if worth re-testing later (single-run result, not many
+samples). Deployed to the home-lab server and `systemctl --user restart cerebro`'d — the
+personality change is live for real conversations as of today.
 
 **Transport (decided): plain HTTP.** One request per utterance because the firmware already
 segments utterances; `HTTPClient` ships with the ESP32 core; curl-debuggable. WebSocket would only
