@@ -913,10 +913,22 @@ not full-brightness/white.** Next concrete steps, in priority order:
    verified again, not a fresh floor/distance test; the floor-test preconditions
    below still apply.
 2. **Legal review of the Piper GPL question** — see `THIRD_PARTY_LICENSES.md`;
-   blocks commercial/open-source release, not day-to-day use.
-3. Watch STT accuracy over more conversations — `STT_BEAM_SIZE` raised from 1 to 5
-   (deployed 2026-09-21) after measuring a real mishearing fixed at negligible
-   latency cost, but only tested on 3 synthetic phrases so far.
+   blocks commercial/open-source release, not day-to-day use. The one sub-item
+   that was pure technical verification (not a legal judgment call) is now
+   resolved: the `es_ES-davefx-medium` voice's own Hugging Face `MODEL_CARD`
+   confirms its training dataset is CC0 (verified 2026-09-24) — the core
+   question (Piper itself, GPL-3.0, imported in-process in `tts.py`) is
+   unchanged and still needs an actual lawyer.
+3. ~~Watch STT accuracy over more conversations~~ — **checked 2026-09-24** against
+   real home-lab conversation logs (`journalctl --user -u cerebro.service`),
+   comparing turns logged before vs. after the exact `STT_BEAM_SIZE=5` restart
+   (2026-09-20 20:02 server time): pre-fix, ~5/30 real transcripts had clear
+   mishearings (*"Muéve tu **huello**..."* for cuello, *"Me gusta tu **polán**"*
+   for plan, *"¿Te conoces ni vos?"*); post-fix, ~1/25 (*"¡Me luta du plan!"*,
+   the very first turn after the restart, ambiguous). Small sample, but a real
+   drop (~17% → ~4-8%) on live conversations, not just the earlier 3-phrase
+   synthetic test — consistent with keeping beam=5. Worth another pass if
+   garbling reports come back.
 
 **As of 2026-09-15, the whole chain is verified for the first time**: neck centers
 correctly, all 4 wheels spin with correct direction in every command, and the

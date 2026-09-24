@@ -56,11 +56,14 @@ avoid advertising internal topology.
      anyway, but forecloses a closed-source commercial variant of the backend.
 - **Piper voice model** (`es_ES-davefx-medium`, an ONNX file downloaded by
   `manage.py fetch_models` from the `rhasspy/piper-voices` Hugging Face repo):
-  license **NEEDS VERIFICATION** per-voice — piper-voices publishes a mix of
-  licenses across voices (some CC0/MIT, some more restrictive depending on the
-  training data's provenance). Check that specific voice's entry in
-  `rhasspy/piper-voices`'s `voices.json`/model card before shipping it in a
-  commercial product.
+  **VERIFIED 2026-09-24** — the voice's own `MODEL_CARD` on Hugging Face
+  (`rhasspy/piper-voices/es/es_ES/davefx/medium/MODEL_CARD`) states its training
+  dataset (`davefx`, from `OHF-Voice/voice-datasets`) is **License: CC0**
+  (public domain dedication, no restrictions). One nuance worth flagging, not
+  resolving here: the model card also says it was "finetuned from U.S. English
+  lessac voice (medium quality)" — the Lessac base voice's own licensing wasn't
+  independently checked, so this is strong evidence the voice is unencumbered,
+  not an absolute guarantee free of any upstream claim on the base checkpoint.
 
 ## Freenove-derived code — separately tracked
 
@@ -116,7 +119,7 @@ depending on Freenove for firmware/drivers.
 | Model | Source | License | Risk |
 |---|---|---|---|
 | faster-whisper `small` (Whisper weights, CTranslate2 format) | SYSTAN/faster-whisper on Hugging Face, derived from OpenAI Whisper | MIT (OpenAI Whisper's original license) | Low |
-| Piper voice `es_ES-davefx-medium` | `rhasspy/piper-voices` on Hugging Face | **NEEDS VERIFICATION** — per-voice, check that specific voice's license in the piper-voices repo before commercial use | Medium until checked |
+| Piper voice `es_ES-davefx-medium` | `rhasspy/piper-voices` on Hugging Face | **CC0** per the voice's own `MODEL_CARD` (verified 2026-09-24) — base checkpoint (`lessac`) not independently checked | Low |
 
 ## What this means for the roadmap
 
