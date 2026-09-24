@@ -1,8 +1,9 @@
 /**********************************************************************
-  Mini-Ultron high-level locomotion API, built on top of Freenove's
-  Motor_M_Move(M1,M2,M3,M4). Wheel order (physically verified on this
-  chassis by Enrico, 2026-09-13 — supersedes the earlier inference from
-  Freenove's demo code, which had M3/M4 swapped):
+  Mini-Ultron high-level locomotion API, built on top of
+  chassisSetWheelSpeeds(M1,M2,M3,M4) (see chassis_hal.h). Wheel order
+  (physically verified on this chassis by Enrico, 2026-09-13 —
+  supersedes the earlier inference from Freenove's demo code, which had
+  M3/M4 swapped):
     M1 = front-left   M2 = back-left
     M3 = back-right   M4 = front-right
 **********************************************************************/

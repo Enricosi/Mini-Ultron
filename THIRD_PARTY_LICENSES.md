@@ -68,26 +68,23 @@ avoid advertising internal topology.
 ## Freenove-derived code — separately tracked
 
 Mini-Ultron uses Freenove hardware (ESP32-S3 Ultimate Starter Kit, FNK0089 4WD
-Mecanum kit) and, per `CLAUDE.md`'s convention, vendors official Freenove driver
-code rather than rewriting it. `freenove-car-reference/` (Freenove's own GitHub
-repo, cloned locally) is **not part of this repo's git history** (gitignored) —
-it's read-only reference material, never distributed if this repo is published.
-The only Freenove-derived material that actually ships in Mini-Ultron's own
-history is:
+Mecanum kit). `freenove-car-reference/` (Freenove's own GitHub repo, cloned
+locally) is **not part of this repo's git history** (gitignored) — it's
+read-only reference material, never distributed if this repo is published.
 
 | What | Where | Origin | License | Status |
 |---|---|---|---|---|
-| Motor/servo/ultrasonic/line-tracker driver | `firmware/pico/pico_ultron/Freenove_4WD_Car_For_Pico_W.{h,cpp}` | Trimmed copy of Freenove's official `Freenove_4WD_Car_Kit_for_Raspberry_Pi_Pico` driver (Motor + `01.2_Servo` sections only; buzzer/LED-matrix/WS2812/IR/photosensitive/emotion-board sections explicitly never vendored — see the file's own header comment) | **NEEDS VERIFICATION** — Freenove's own repo (`freenove-car-reference/`, gitignored locally) does not have a top-level `LICENSE` file as of this check; Freenove kits' example code is typically distributed for use with their hardware without a formal OSS license grant. This is the single biggest **NEEDS LEGAL REVIEW** item for open-sourcing the Pico firmware as-is. | Vendored, function bodies unmodified (per project convention); Mini-Ultron-specific behavior lives in the layer above (`motor_controller`, `neck_controller`, `safety_controller`) |
+| Motor/servo/ultrasonic/line-tracker driver | `firmware/pico/pico_ultron/chassis_hal.{h,cpp}` | **RESOLVED 2026-09-24 — reimplemented from scratch, no longer vendored.** The previous copy (`Freenove_4WD_Car_For_Pico_W.{h,cpp}`, a trimmed copy of Freenove's official `Freenove_4WD_Car_Kit_for_Raspberry_Pi_Pico` driver) was **removed from the working tree** (still recoverable from git history, but no longer part of the current source). `chassis_hal.{h,cpp}` reimplements the same behavior independently — pin numbers, motor polarity, and the servo's angle-to-duty-cycle mapping are physically-verified facts about this chassis (not copyrightable expression) that carried over; the code structure/expression is original. **COMPILES** (`arduino-cli compile --fqbn rp2040:rp2040:rpipicow`, verified 2026-09-24) — not yet re-uploaded/physically re-tested on hardware. | N/A — original code, only facts carried over | Clean, no Freenove-license dependency. Still depends on the third-party `RP2040_PWM` (khoih-prog, MIT) library for PWM generation, same as before — that dependency was never the licensing concern. |
 | WS2812 LED control | `firmware/pico/pico_ultron/led_controller.{h,cpp}` | **Not vendored.** Freenove ships its own `Freenove_4WD_Car_WS2812.{h,cpp}` (flow/blink/rainbow modes) in the official kit examples, but Mini-Ultron deliberately wrote its own from-scratch driver instead (see the file's header comment) — specifically to avoid inheriting this same licensing question for a feature that was easy to reimplement independently. | N/A — original code | Clean, no Freenove-license dependency |
 | Pin numbers / wiring facts (GPIO assignments, wheel mapping) | Comments throughout the Pico/ESP32 firmware, `docs/hardware.md` | Facts (pin numbers, physical wiring), not copyrightable expression | N/A | No license concern — facts about how to wire a board aren't copyrightable |
 
-**Recommendation**: before any public release, either (a) get explicit permission/
-clarification from Freenove on redistribution terms for the vendored driver file,
-or (b) treat `Freenove_4WD_Car_For_Pico_W.{h,cpp}` as the thing to reimplement
-independently first (it's a small, well-understood surface — motor PWM + one
-servo angle call + ultrasonic + 3-pin digital read), removing the dependency
-entirely. This matches `CLAUDE.md`'s own stated long-term direction of not
-depending on Freenove for firmware/drivers.
+**Both Freenove-derived blockers from the previous review are now closed**:
+the Pico driver above (reimplemented), and the ESP32 side never vendored
+Freenove code to begin with (see WS2812 row). The only thing left before this
+row can be called fully closed is Enrico physically re-flashing and
+re-verifying `chassis_hal.cpp` on real hardware (compiles clean, but a
+rewrite of PWM/servo/sensor code should be re-tested, not just recompiled —
+see `docs/CURRENT_STATE.md`).
 
 ## Arduino/C++ libraries (firmware)
 
@@ -99,7 +96,7 @@ depending on Freenove for firmware/drivers.
 | Adafruit NeoPixel | 1.15.5 | **LGPL-3.0** | Yes | Yes | Yes, with source availability for the library itself | WS2812 shield LEDs (`led_controller.cpp`) | Low-medium — LGPL's "combined work" relinking requirement is a real embedded-systems question in general, but Mini-Ultron already ships/publishes its own firmware source and expects users to compile/reflash it themselves, which is the situation LGPL's relinking clause is designed to be satisfied by. Still worth a line in any published LICENSE/NOTICE file. |
 | Adafruit PWM Servo Driver Library | 3.0.3 | BSD (2-clause style) | Yes | Yes | Yes, with copyright notice | PCA9685 driver for the deferred/historical arm code (`arm_gestures.cpp`, compiled out via `MINI_ULTRON_ENABLE_ARMS 0`) | Low — and moot unless arms are reactivated |
 | ArduinoJson | 7.4.3 | MIT | Yes | Yes | Yes, with copyright notice | Parsing CEREBRO's JSON replies (`brain_link.cpp`) | Low |
-| RP2040_PWM (khoih-prog) | 1.7.0 | MIT | Yes | Yes | Yes, with copyright notice | PWM helper depended on by the vendored Freenove motor driver | Low |
+| RP2040_PWM (khoih-prog) | 1.7.0 | MIT | Yes | Yes | Yes, with copyright notice | PWM helper depended on by `chassis_hal.cpp` (motor/servo driver, reimplemented 2026-09-24) | Low |
 | ESP32 Arduino core (WiFi, HTTPClient, Wire, SPI, ESP_I2S) | via `esp32:esp32` board package | Apache-2.0 / LGPL mix (Espressif's `arduino-esp32` core) | Yes | Yes | Yes | Wi-Fi, HTTP client, I2C, SPI, I2S on the ESP32 | Low — standard, widely-shipped-commercially board support package |
 | RP2040 Arduino core (`arduino-pico`, earlephilhower) | via `rp2040:rp2040` board package | BSD-3-Clause | Yes | Yes | Yes | Base Arduino framework for the Pico W | Low |
 
@@ -126,11 +123,13 @@ depending on Freenove for firmware/drivers.
 - **Not a blocker for continuing local development or hardware bring-up** — none of
   this affects how the robot works today, only what's safe to do once the goal is
   "publish the source" or "sell an assembled unit."
-- **Before open-sourcing the repo**: resolve the Freenove driver question (get
-  clarification, or reimplement it) and decide on the Piper GPL question (subprocess
-  boundary, swap engine, or go full-GPL on the backend).
-- **Before selling an assembled unit**: same two items, since a sold product is a
-  distribution event same as publishing source.
+- **Before open-sourcing the repo**: the Freenove driver question is now
+  resolved (reimplemented, pending physical re-verification); decide on the
+  Piper GPL question (subprocess boundary, swap engine, or go full-GPL on the
+  backend) — still open, needs an actual lawyer, not being pursued right now
+  per Enrico's call (2026-09-24).
+- **Before selling an assembled unit**: same Piper item, since a sold product
+  is a distribution event same as publishing source.
 - Nothing else in this inventory is a meaningful blocker — the rest is ordinary
   BSD/MIT-licensed tooling with no unusual obligations beyond keeping copyright
   notices in a NOTICE/THIRD_PARTY file, which this document already is the start of.

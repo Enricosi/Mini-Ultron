@@ -15,7 +15,7 @@
     STOP
     STATUS
 **********************************************************************/
-#include "Freenove_4WD_Car_For_Pico_W.h"
+#include "chassis_hal.h"
 #include "motor_controller.h"
 #include "safety_controller.h"
 #include "sensors.h"
@@ -30,7 +30,7 @@ void setup() {
   Serial.begin(9600);
   Serial1.begin(9600);  // UART to the ESP32-S3 (GPIO0 TX / GPIO1 RX)
 
-  Motor_Setup();
+  chassisMotorsInit();
   motorControllerInit();  // motors explicitly stopped before anything else
   neckControllerInit();   // neck moves to its safe, centered startup position
   sensorsInit();

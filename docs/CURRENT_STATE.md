@@ -8,7 +8,32 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-21. **Today, in two parts.** First, a subagent tasked only with a
+Last reviewed: 2026-09-24. **Today:** (1) Verified the Piper voice
+`es_ES-davefx-medium`'s license (CC0, per its Hugging Face `MODEL_CARD`) and confirmed the
+`STT_BEAM_SIZE=5` fix against real home-lab conversation logs (not just the earlier 3-phrase
+synthetic test) — `journalctl --user -u cerebro.service` turns before vs. after the exact
+restart timestamp showed garbling drop from ~17% (5/30) to ~4-8% (1/25) on live audio. Both
+detailed in `THIRD_PARTY_LICENSES.md`. (2) At Enrico's request (waiting on soldering equipment
+for the IMU/I2S crosstalk fix, not pursuing a lawyer for Piper right now), **reimplemented the
+vendored `Freenove_4WD_Car_For_Pico_W.{h,cpp}` driver from scratch as `chassis_hal.{h,cpp}`** —
+closes the other **NEEDS LEGAL REVIEW** item (Freenove's reference repo ships no LICENSE file).
+Pin numbers, motor polarity (`REVERSE_MOTORx`, all 4 physically confirmed), and the servo's
+angle-to-duty-cycle mapping are unchanged (physically-verified facts about this chassis, not
+copyrightable expression); the code itself is original, restructured around one
+`driveMotor(index, speed)` helper instead of Freenove's four repeated blocks. The old vendored
+files were removed from the tree (still in git history). **COMPILES** clean
+(`arduino-cli compile --fqbn rp2040:rp2040:rpipicow`, 321360 bytes flash/15%, 70212 bytes
+RAM/26% — near-identical footprint to before) — **NOT YET uploaded or physically re-tested**;
+a from-scratch rewrite of PWM/servo/sensor code should be re-verified on real hardware before
+being trusted at parity with the driver it replaced, even though the electrical
+behavior/formulas were deliberately kept identical. (3) Fixed a real documentation staleness
+bug found while investigating (2): the ESP32 pin table and "Pending hardware" section still
+said INMP441/amp/MPU6050 were "not yet physically tested" / "not integrated into
+`hello_ultron`" from 2026-09-18, contradicting the top-of-file summary (which already said
+they were wired, verified, and integrated) — confirmed against the actual firmware
+(`audioInit()`/`imuInit()` are called from `hello_ultron.ino`) and corrected both spots.
+
+**Previously (2026-09-21), in two parts.** First, a subagent tasked only with a
 licensing/secrets audit exceeded its scope and, on its own, implemented the Pico's WS2812
 `led_controller` module (2-state: off / dim violet), hardened `personality.py`'s "avoid these
 words"/"insult sparingly" rules into hard constraints (banned filler words were leaking in 6/10
@@ -56,12 +81,10 @@ configurable (`STT_BEAM_SIZE`, new default `5`, was hardcoded `1`) and deployed.
 fully eliminate the garbling (small sample), but a real, evidence-based improvement with
 essentially free latency cost on this hardware — worth re-evaluating if garbling recurs.
 
-**Still open, in rough priority:** (a) the actual floor test of locomotion (today's test was
-movement-verified but not a full floor/distance test — same preconditions as before: clear
-area, Enrico beside it); (b) legal review of the Piper GPL question; (c) confirm the
-`STT_BEAM_SIZE=5` change actually reduces
-real-world garbling over more conversations (only measured on 3 synthetic phrases so far).
-Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
+**Still open as of 2026-09-21** (see "Immediate next step" below for the current,
+2026-09-24-updated version of this list — Piper's voice license and the STT beam-size question
+are now resolved, and the Freenove driver question is now resolved too, pending a physical
+re-test). Previously 2026-09-18: MPU6050, INMP441 and amp+speaker wired and verified
 and integrated (`audio.{h,cpp}`, `imu.{h,cpp}`); **CEREBRO v0.1 (Django brain) built and deployed on the
 home-lab mini server**; the robot holds spoken conversations with it (~1.7-2.1 s from end of speech to
 start of reply audio); brain-driven movement verified with the wheels in the air and then switched
@@ -166,15 +189,21 @@ servos, camera.
 
 ## Pico W firmware status
 
-Location: `firmware/pico/pico_ultron/`. Depends on the third-party `RP2040_PWM`
-library (khoih-prog), installed locally via Arduino Library Manager (not bundled in
-repo; a reference zip sits under `freenove-car-reference/Libraries/`).
+Location: `firmware/pico/pico_ultron/`. Motor/servo/ultrasonic/track hardware access
+is `chassis_hal.{h,cpp}` (reimplemented from scratch 2026-09-24, see top summary —
+no longer the vendored `Freenove_4WD_Car_For_Pico_W.{h,cpp}`, now removed from the
+tree). Depends on the third-party `RP2040_PWM` library (khoih-prog), installed
+locally via Arduino Library Manager (not bundled in repo; a reference zip sits under
+`freenove-car-reference/Libraries/`).
 
-**COMPILES** (`rp2040:rp2040:rpipicow`, last verified 2026-09-20 — 321192 bytes
-flash, 15%; 70332 bytes RAM, 26%, after adding `led_controller`). **UPLOADED on 2026-09-13 and 2026-09-15** via
-`arduino-cli upload`; Claude ran compile+upload directly both times (explicitly
-told to for that session, per `CLAUDE.md`'s hardware-actuation rule) — all physical
-testing/observation (motors/servo actually moving) remains Enrico's.
+**COMPILES** (`rp2040:rp2040:rpipicow`, last verified 2026-09-24 with `chassis_hal` —
+321360 bytes flash, 15%; 70212 bytes RAM, 26%, near-identical to the 2026-09-20
+figures below). **UPLOADED on 2026-09-13 and 2026-09-15** via `arduino-cli upload` —
+but that was the old vendored-driver code; **the `chassis_hal` rewrite has not been
+uploaded or physically tested yet**, see "Immediate next step". Claude ran
+compile+upload directly on 2026-09-13/15 (explicitly told to for that session, per
+`CLAUDE.md`'s hardware-actuation rule) — all physical testing/observation (motors/
+servo actually moving) remains Enrico's.
 
 **Upload note:** `arduino-cli upload -p /dev/ttyACM0 --fqbn rp2040:rp2040:rpipicow .`
 previously required the Pico already in BOOTSEL mode (unplug, hold BOOTSEL, replug,
@@ -278,14 +307,14 @@ treat this firmware as producing correct physical behavior yet.
   IMPLEMENTED, COMPILES. **NOT uploaded or physically tested** — Enrico still needs
   to flash and power the Pico to confirm the LEDs actually light up dim violet and
   that current draw/interference with motors is a non-issue.
-- `Freenove_4WD_Car_For_Pico_W.{h,cpp}` — vendored/trimmed copy of Freenove's
-  official driver. **Servo section added this session**, vendored from the official
-  `01.2_Servo` demo: `PIN_SERVO1 = GPIO13`, `Servo_Setup()`, `Servo_1_Angle(float)`.
-  Only these two functions were vendored (not the official offset/sweep helpers —
-  not needed for a fixed 3-position neck, and `Servo_Sweep` is `delay()`-based, which
-  would be inappropriate to pull into this layer). Motor/Ultrasonic/Track sections
-  unchanged. Buzzer/battery/LED matrix/WS2812/IR/photosensitive/emotion-board
-  sections still deliberately omitted (not on this chassis).
+- `chassis_hal.{h,cpp}` — **replaced 2026-09-24** the vendored/trimmed copy of
+  Freenove's official driver (`Freenove_4WD_Car_For_Pico_W.{h,cpp}`, removed from the
+  tree, see top summary). Same surface (servo, 4 motors, ultrasonic, 3-channel
+  track), reimplemented from scratch to remove the dependency on Freenove's
+  unlicensed reference code. Pin numbers, `REVERSE_MOTORx` polarity, and the servo's
+  angle-to-duty-cycle formula are unchanged (physically-verified facts, not
+  Freenove's copyrightable expression). COMPILES, **not yet uploaded/physically
+  re-tested**.
 
 ### Protocol v1 — extended this session
 
@@ -327,9 +356,11 @@ uploaded or physically confirmed** — see "Immediate next step".
 
 **Cross-checked against Freenove's own manual** (`Tutorial.pdf`, Ch.1 p.46 wiring
 diagram + Ch.2 p.59-65 motor theory), 2026-09-13:
-- GPIO pin assignments in our vendored `Freenove_4WD_Car_For_Pico_W.h`
-  (M1=18/19, M2=20/21, M3=6/7, M4=8/9) match the manual exactly — ruled out as a
-  source of any of this session's bugs.
+- GPIO pin assignments (M1=18/19, M2=20/21, M3=6/7, M4=8/9) match the manual
+  exactly — ruled out as a source of any of this session's bugs. (These pin numbers
+  now live in `chassis_hal.h`, not the vendored `Freenove_4WD_Car_For_Pico_W.h` this
+  cross-check originally ran against — see top summary, 2026-09-24. The numbers
+  themselves are unchanged.)
 - The manual states directly: "m1_speed, m2_speed represent the two motors on the
   left and m3_speed, m4_speed embody those on the right" — consistent with Enrico's
   physically-verified mapping (M1/M2 = left side, M3/M4 = right side). Re-reading the
@@ -650,15 +681,15 @@ work (I2S, HTTP) lives in the audio and brain FreeRTOS tasks.
 | — | PCA9685 CH2 | n/a — PCA9685 removed; neck was always on the Freenove shield, not PCA9685 |
 | GPIO17 | UART RX from Pico (GPIO0/TX) | VERIFIED, in use — `PICO_LINK_RX_PIN` in `pico_link_config.h`, wired and physically tested 2026-09-15 |
 | GPIO18 | UART TX to Pico (GPIO1/RX) | VERIFIED, in use — `PICO_LINK_TX_PIN` in `pico_link_config.h`, wired and physically tested 2026-09-15 |
-| GPIO9 | INMP441 SCK (I2S BCLK) | WIRED by Enrico 2026-09-18 (not yet physically tested) — `inmp441_test` uses it |
-| GPIO10 | INMP441 WS (I2S LRCLK) | WIRED by Enrico 2026-09-18 (not yet physically tested) |
-| GPIO11 | INMP441 SD (I2S data in) | WIRED by Enrico 2026-09-18 (not yet physically tested). INMP441 VDD->3.3V, GND->GND, L/R->GND (left slot) |
-| GPIO9 / GPIO10 | Amp BCK / LCK — **shared** with INMP441 SCK / WS | WIRED by Enrico 2026-09-18 (not yet tested). Intentional: one I2S port, full-duplex, ESP32 = clock master for both mic and amp |
-| GPIO12 | Amp DIN (I2S data out) | WIRED by Enrico 2026-09-18 (not yet tested) — `audio_out_test` uses it |
+| GPIO9 | INMP441 SCK (I2S BCLK) | **VERIFIED, integrated in production** — wired 2026-09-18, integrated into `audio.{h,cpp}`/`audioInit()` (called from `hello_ultron.ino`) later that session; CEREBRO has held real spoken conversations over this mic since (see top summary). Corrected 2026-09-24: this row previously said "not yet physically tested / not yet integrated," which had gone stale — `inmp441_test` was only the original bench sketch, not the final integration point. |
+| GPIO10 | INMP441 WS (I2S LRCLK) | **VERIFIED, integrated in production** — same correction as GPIO9 above |
+| GPIO11 | INMP441 SD (I2S data in) | **VERIFIED, integrated in production** — same correction as GPIO9 above. INMP441 VDD->3.3V, GND->GND, L/R->GND (left slot) |
+| GPIO9 / GPIO10 | Amp BCK / LCK — **shared** with INMP441 SCK / WS | **VERIFIED, integrated in production** — same correction as GPIO9 above. One I2S port, full-duplex, ESP32 = clock master for both mic and amp |
+| GPIO12 | Amp DIN (I2S data out) | **VERIFIED, integrated in production** — same correction as GPIO9 above; `audio_out_test` was only the original bench sketch |
 | — | Amp SCK/MCLK | NOT CONNECTED — matches Freenove's official ESP32-S3 example (only BCLK/LRC/DOUT configured). GPIO16 is free, not reserved |
-| — | Amp VCC->5V, GND->common GND, speaker->L+/L- | WIRED 2026-09-18. Speaker connects only to the amp board's left-channel output, never to a GPIO |
-| GPIO13 | MPU6050 I2C SDA | WIRED by Enrico 2026-09-18 (not yet physically tested) — `mpu6050_test` and `i2c_scan` use it |
-| GPIO14 | MPU6050 I2C SCL | WIRED by Enrico 2026-09-18 (not yet physically tested) — same as above |
+| — | Amp VCC->5V, GND->common GND, speaker->L+/L- | WIRED 2026-09-18, in production use |
+| GPIO13 | MPU6050 I2C SDA | **VERIFIED, integrated** — wired 2026-09-18, integrated into `imu.{h,cpp}`/`imuInit()` (called from `hello_ultron.ino`). Data itself is degraded by I2S crosstalk while audio runs — see "`imu.{h,cpp}`" section below, treat `joltCount`/roll/pitch as unreliable until that's fixed. Corrected 2026-09-24: this row previously said "not yet physically tested," stale. |
+| GPIO14 | MPU6050 I2C SCL | **VERIFIED, integrated** — same correction as GPIO13 above |
 
 Constructor in use (software SPI, matches wiring above, unchanged):
 ```cpp
@@ -895,7 +926,7 @@ No existing safety behavior was weakened.
 
 - ~~ESP32↔Pico UART wiring~~ — **DONE 2026-09-15**, see "ESP32 ↔ Pico communication
   boundary".
-- ~~INMP441 wiring~~ — **WIRED and WORKING 2026-09-18** (SCK->GPIO9, WS->GPIO10, SD->GPIO11, L/R->GND, VDD->3.3V). `firmware/esp32/inmp441_test/` uploaded; live audio levels confirmed (see the sketch's entry under Repository layout). Not integrated into `hello_ultron`.
+- ~~INMP441 wiring~~ — **WIRED and WORKING 2026-09-18** (SCK->GPIO9, WS->GPIO10, SD->GPIO11, L/R->GND, VDD->3.3V). `firmware/esp32/inmp441_test/` was the original bench sketch (live audio levels confirmed there first). **Corrected 2026-09-24: it IS integrated into `hello_ultron`** — `audio.{h,cpp}`, `audioInit()` called from `hello_ultron.ino`; CEREBRO has held real spoken conversations through this mic since (see top summary). This line previously said "Not integrated," which had gone stale once that integration landed.
 - ~~Speaker/amplifier wiring~~ — **WIRED and WORKING 2026-09-18**, confirmed by Enrico against the official Freenove ESP32-S3 example: the Audio Converter & Amplifier is one board (ES7148 DAC + PAM8403 amp), VCC 3.3-5.0V powered from 5V, speaker on L+/L-, SCK/MCLK not connected. Wiring: BCK->GPIO9, LCK->GPIO10 (shared with the mic's SCK/WS, intentionally), DIN->GPIO12. Bench sketch `firmware/esp32/audio_out_test/` (440 Hz beep, MCLK disabled) compiles, uploaded; Enrico confirmed a clean 440 Hz beep. **Mic + speaker full-duplex on one I2S port VERIFIED 2026-09-18** (`mic_speaker_test`): both directions coexist on the shared GPIO9/10 clocks. Recorded voice plays back intelligibly with some "old radio" character (16 kHz / 8 kHz bandwidth, mic noise floor); ~x3 playback gain is the best balance. Anything combining mic + speaker must use ONE I2S instance in full-duplex, not two instances fighting over GPIO9/10. Untested next levers if quality matters later: higher sample rate (32/44.1 kHz), noise gate/filtering.
 - ~~MPU6050 wiring and I2C pin selection~~ — **WIRED, integrated as `imu.{h,cpp}` 2026-09-18**, works cleanly on its own but is corrupted by the I2S audio clocks on the current wiring — see "`imu.{h,cpp}`" section. Bench sketch `mpu6050_test` verified motion response earlier (accel/gyro respond, settle back to az ~1.05 g).
 - Decision on whether the Freenove shield's 5V rail can safely power the ESP32
@@ -929,6 +960,15 @@ not full-brightness/white.** Next concrete steps, in priority order:
    drop (~17% → ~4-8%) on live conversations, not just the earlier 3-phrase
    synthetic test — consistent with keeping beam=5. Worth another pass if
    garbling reports come back.
+4. **NEW 2026-09-24 — re-flash and physically re-test the Pico** now that its
+   motor/servo/ultrasonic/track driver was reimplemented as `chassis_hal.{h,cpp}`
+   (replacing the vendored, unlicensed `Freenove_4WD_Car_For_Pico_W.{h,cpp}`, now
+   removed). **COMPILES clean, but has never been uploaded or run on real
+   hardware** — treat locomotion/neck/ultrasonic/line-tracker as UNTESTED again
+   until Enrico re-verifies all 4 wheels' direction, the neck's
+   center/left/right, and the ultrasonic obstacle stop, even though the pin
+   numbers, `REVERSE_MOTORx` polarity, and servo angle math were deliberately
+   kept identical to the driver it replaces.
 
 **As of 2026-09-15, the whole chain is verified for the first time**: neck centers
 correctly, all 4 wheels spin with correct direction in every command, and the

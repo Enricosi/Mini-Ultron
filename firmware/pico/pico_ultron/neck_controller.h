@@ -1,9 +1,8 @@
 /**********************************************************************
   Deterministic neck/front-servo control. The servo is physically wired
-  to the Freenove car shield (PIN_SERVO1, see
-  Freenove_4WD_Car_For_Pico_W.h), so it belongs to the Pico. Only named,
-  pre-validated positions are exposed above this layer - never a raw
-  angle or pulse width.
+  to the Freenove car shield's own servo header (see chassis_hal.h), so
+  it belongs to the Pico. Only named, pre-validated positions are
+  exposed above this layer - never a raw angle or pulse width.
 **********************************************************************/
 #ifndef NECK_CONTROLLER_H
 #define NECK_CONTROLLER_H

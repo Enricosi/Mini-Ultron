@@ -1,20 +1,21 @@
 #include <Arduino.h>
-#include "Freenove_4WD_Car_For_Pico_W.h"
+#include "chassis_hal.h"
 #include "sensors.h"
 
 void sensorsInit() {
-  Ultrasonic_Setup();
-  Track_Setup();
+  chassisUltrasonicInit();
+  chassisTrackInit();
 }
 
 float sensorsReadDistanceCm() {
-  return Get_Sonar();
+  return chassisReadDistanceCm();
 }
 
 void sensorsReadLine(char out[4]) {
-  Track_Read();
-  out[0] = '0' + sensorValue[0];
-  out[1] = '0' + sensorValue[1];
-  out[2] = '0' + sensorValue[2];
+  bool line[3];
+  chassisReadTrack(line);
+  out[0] = '0' + line[0];
+  out[1] = '0' + line[1];
+  out[2] = '0' + line[2];
   out[3] = '\0';
 }
