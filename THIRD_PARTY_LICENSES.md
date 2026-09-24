@@ -74,17 +74,14 @@ read-only reference material, never distributed if this repo is published.
 
 | What | Where | Origin | License | Status |
 |---|---|---|---|---|
-| Motor/servo/ultrasonic/line-tracker driver | `firmware/pico/pico_ultron/chassis_hal.{h,cpp}` | **RESOLVED 2026-09-24 — reimplemented from scratch, no longer vendored.** The previous copy (`Freenove_4WD_Car_For_Pico_W.{h,cpp}`, a trimmed copy of Freenove's official `Freenove_4WD_Car_Kit_for_Raspberry_Pi_Pico` driver) was **removed from the working tree** (still recoverable from git history, but no longer part of the current source). `chassis_hal.{h,cpp}` reimplements the same behavior independently — pin numbers, motor polarity, and the servo's angle-to-duty-cycle mapping are physically-verified facts about this chassis (not copyrightable expression) that carried over; the code structure/expression is original. **COMPILES** (`arduino-cli compile --fqbn rp2040:rp2040:rpipicow`, verified 2026-09-24) — not yet re-uploaded/physically re-tested on hardware. | N/A — original code, only facts carried over | Clean, no Freenove-license dependency. Still depends on the third-party `RP2040_PWM` (khoih-prog, MIT) library for PWM generation, same as before — that dependency was never the licensing concern. |
+| Motor/servo/ultrasonic/line-tracker driver | `firmware/pico/pico_ultron/chassis_hal.{h,cpp}` | **RESOLVED 2026-09-24 — reimplemented from scratch, no longer vendored.** The previous copy (`Freenove_4WD_Car_For_Pico_W.{h,cpp}`, a trimmed copy of Freenove's official `Freenove_4WD_Car_Kit_for_Raspberry_Pi_Pico` driver) was **removed from the working tree** (still recoverable from git history, but no longer part of the current source). `chassis_hal.{h,cpp}` reimplements the same behavior independently — pin numbers, motor polarity, and the servo's angle-to-duty-cycle mapping are physically-verified facts about this chassis (not copyrightable expression) that carried over; the code structure/expression is original. **COMPILES and PHYSICALLY VERIFIED** (`arduino-cli compile --fqbn rp2040:rp2040:rpipicow` 2026-09-24; uploaded same day and Enrico confirmed all of movement, neck, and sensor status work correctly on real hardware). | N/A — original code, only facts carried over | Clean, no Freenove-license dependency. Still depends on the third-party `RP2040_PWM` (khoih-prog, MIT) library for PWM generation, same as before — that dependency was never the licensing concern. |
 | WS2812 LED control | `firmware/pico/pico_ultron/led_controller.{h,cpp}` | **Not vendored.** Freenove ships its own `Freenove_4WD_Car_WS2812.{h,cpp}` (flow/blink/rainbow modes) in the official kit examples, but Mini-Ultron deliberately wrote its own from-scratch driver instead (see the file's header comment) — specifically to avoid inheriting this same licensing question for a feature that was easy to reimplement independently. | N/A — original code | Clean, no Freenove-license dependency |
 | Pin numbers / wiring facts (GPIO assignments, wheel mapping) | Comments throughout the Pico/ESP32 firmware, `docs/hardware.md` | Facts (pin numbers, physical wiring), not copyrightable expression | N/A | No license concern — facts about how to wire a board aren't copyrightable |
 
-**Both Freenove-derived blockers from the previous review are now closed**:
-the Pico driver above (reimplemented), and the ESP32 side never vendored
-Freenove code to begin with (see WS2812 row). The only thing left before this
-row can be called fully closed is Enrico physically re-flashing and
-re-verifying `chassis_hal.cpp` on real hardware (compiles clean, but a
-rewrite of PWM/servo/sensor code should be re-tested, not just recompiled —
-see `docs/CURRENT_STATE.md`).
+**Both Freenove-derived blockers are now fully closed**: the Pico driver above
+(reimplemented and physically re-verified by Enrico 2026-09-24 — all 4 wheels,
+neck, ultrasonic, and line tracker confirmed working), and the ESP32 side
+never vendored Freenove code to begin with (see WS2812 row).
 
 ## Arduino/C++ libraries (firmware)
 
@@ -123,11 +120,11 @@ see `docs/CURRENT_STATE.md`).
 - **Not a blocker for continuing local development or hardware bring-up** — none of
   this affects how the robot works today, only what's safe to do once the goal is
   "publish the source" or "sell an assembled unit."
-- **Before open-sourcing the repo**: the Freenove driver question is now
-  resolved (reimplemented, pending physical re-verification); decide on the
-  Piper GPL question (subprocess boundary, swap engine, or go full-GPL on the
-  backend) — still open, needs an actual lawyer, not being pursued right now
-  per Enrico's call (2026-09-24).
+- **Before open-sourcing the repo**: the Freenove driver question is fully
+  resolved (reimplemented and physically re-verified 2026-09-24); decide on
+  the Piper GPL question (subprocess boundary, swap engine, or go full-GPL on
+  the backend) — still open, needs an actual lawyer, not being pursued right
+  now per Enrico's call (2026-09-24).
 - **Before selling an assembled unit**: same Piper item, since a sold product
   is a distribution event same as publishing source.
 - Nothing else in this inventory is a meaningful blocker — the rest is ordinary

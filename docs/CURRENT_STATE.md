@@ -23,10 +23,17 @@ copyrightable expression); the code itself is original, restructured around one
 `driveMotor(index, speed)` helper instead of Freenove's four repeated blocks. The old vendored
 files were removed from the tree (still in git history). **COMPILES** clean
 (`arduino-cli compile --fqbn rp2040:rp2040:rpipicow`, 321360 bytes flash/15%, 70212 bytes
-RAM/26% — near-identical footprint to before) — **NOT YET uploaded or physically re-tested**;
-a from-scratch rewrite of PWM/servo/sensor code should be re-verified on real hardware before
-being trusted at parity with the driver it replaced, even though the electrical
-behavior/formulas were deliberately kept identical. (3) Fixed a real documentation staleness
+RAM/26% — near-identical footprint to before), **UPLOADED and PHYSICALLY VERIFIED same
+day** — Enrico put the Pico in BOOTSEL mode, Claude ran `arduino-cli upload` (explicitly
+told to for this session), confirmed the firmware boots and responds (`PING` -> `OK`) via
+a non-actuating check, then Enrico tested all of `MOVE:FWD/BACK/LEFT/RIGHT`,
+`ROTATE:L/R`, `NECK:CENTER/LEFT/RIGHT`, `STATUS` (ultrasonic + line tracker), and the
+comms-timeout watchdog himself and confirmed **"funciona bien"** — the reimplementation
+is now at full parity with the driver it replaced, not just compile-verified. Note: after
+the BOOTSEL flash, USB serial port assignments swapped — the Pico enumerated as
+`/dev/ttyACM1` and the ESP32 as `/dev/ttyACM0` this session; don't assume either is fixed,
+check `arduino-cli board list` if a port-not-found error comes up. (3) Fixed a real
+documentation staleness
 bug found while investigating (2): the ESP32 pin table and "Pending hardware" section still
 said INMP441/amp/MPU6050 were "not yet physically tested" / "not integrated into
 `hello_ultron`" from 2026-09-18, contradicting the top-of-file summary (which already said
@@ -196,21 +203,27 @@ tree). Depends on the third-party `RP2040_PWM` library (khoih-prog), installed
 locally via Arduino Library Manager (not bundled in repo; a reference zip sits under
 `freenove-car-reference/Libraries/`).
 
-**COMPILES** (`rp2040:rp2040:rpipicow`, last verified 2026-09-24 with `chassis_hal` —
-321360 bytes flash, 15%; 70212 bytes RAM, 26%, near-identical to the 2026-09-20
-figures below). **UPLOADED on 2026-09-13 and 2026-09-15** via `arduino-cli upload` —
-but that was the old vendored-driver code; **the `chassis_hal` rewrite has not been
-uploaded or physically tested yet**, see "Immediate next step". Claude ran
-compile+upload directly on 2026-09-13/15 (explicitly told to for that session, per
-`CLAUDE.md`'s hardware-actuation rule) — all physical testing/observation (motors/
-servo actually moving) remains Enrico's.
+**COMPILES, UPLOADED, PHYSICALLY VERIFIED** (`rp2040:rp2040:rpipicow`, `chassis_hal`
+rewrite: 321360 bytes flash, 15%; 70212 bytes RAM, 26%, near-identical to the
+2026-09-20 figures below). **Uploaded and re-tested 2026-09-24** — Claude ran
+`arduino-cli upload` (explicitly told to for this session, per `CLAUDE.md`'s
+hardware-actuation rule) after Enrico put the Pico in BOOTSEL mode, verified `PING`
+-> `OK` over serial (non-actuating), and Enrico then physically tested all 4 wheels
+in every direction, the neck, the ultrasonic, the line tracker, and the comms
+watchdog himself — confirmed **"funciona bien."** Also uploaded (old vendored-driver
+code) on 2026-09-13 and 2026-09-15.
 
-**Upload note:** `arduino-cli upload -p /dev/ttyACM0 --fqbn rp2040:rp2040:rpipicow .`
+**Upload note:** `arduino-cli upload -p <port> --fqbn rp2040:rp2040:rpipicow .`
 previously required the Pico already in BOOTSEL mode (unplug, hold BOOTSEL, replug,
 release) — it used to fail with `Scanning for RP2040 devices` / `No drive to deploy`
-without that. On 2026-09-15 a plain upload attempt succeeded without manual BOOTSEL
+without that; **2026-09-24 needed manual BOOTSEL again** (a plain attempt failed
+first with that exact error, succeeded once Enrico put it in BOOTSEL). Also note:
+**the USB serial port assignment isn't fixed** — after the 2026-09-24 flash the Pico
+enumerated as `/dev/ttyACM1` and the ESP32 as `/dev/ttyACM0` (previously the Pico
+had used `/dev/ttyACM0`); always check `arduino-cli board list` rather than assuming
+a port. On 2026-09-15 a plain upload attempt succeeded without manual BOOTSEL
 (`arduino-cli` logged `Resetting /dev/ttyACM0` and found the RPI-RP2 drive itself) —
-unclear if this is now reliable or was circumstantial; if a future upload fails with
+so it's circumstantial, not reliable; if a future upload fails with
 that error, fall back to manual BOOTSEL as before.
 
 **PHYSICALLY TESTED starting 2026-09-13, under real battery power, continued
@@ -313,8 +326,9 @@ treat this firmware as producing correct physical behavior yet.
   track), reimplemented from scratch to remove the dependency on Freenove's
   unlicensed reference code. Pin numbers, `REVERSE_MOTORx` polarity, and the servo's
   angle-to-duty-cycle formula are unchanged (physically-verified facts, not
-  Freenove's copyrightable expression). COMPILES, **not yet uploaded/physically
-  re-tested**.
+  Freenove's copyrightable expression). **COMPILES, UPLOADED, PHYSICALLY
+  VERIFIED same day** — Enrico confirmed all 4 wheels, neck, ultrasonic, and
+  line tracker work correctly.
 
 ### Protocol v1 — extended this session
 
@@ -960,15 +974,14 @@ not full-brightness/white.** Next concrete steps, in priority order:
    drop (~17% → ~4-8%) on live conversations, not just the earlier 3-phrase
    synthetic test — consistent with keeping beam=5. Worth another pass if
    garbling reports come back.
-4. **NEW 2026-09-24 — re-flash and physically re-test the Pico** now that its
-   motor/servo/ultrasonic/track driver was reimplemented as `chassis_hal.{h,cpp}`
-   (replacing the vendored, unlicensed `Freenove_4WD_Car_For_Pico_W.{h,cpp}`, now
-   removed). **COMPILES clean, but has never been uploaded or run on real
-   hardware** — treat locomotion/neck/ultrasonic/line-tracker as UNTESTED again
-   until Enrico re-verifies all 4 wheels' direction, the neck's
-   center/left/right, and the ultrasonic obstacle stop, even though the pin
-   numbers, `REVERSE_MOTORx` polarity, and servo angle math were deliberately
-   kept identical to the driver it replaces.
+4. ~~Re-flash and physically re-test the Pico~~ — **DONE 2026-09-24**, same day
+   as item 4 was written: its motor/servo/ultrasonic/track driver was
+   reimplemented as `chassis_hal.{h,cpp}` (replacing the vendored, unlicensed
+   `Freenove_4WD_Car_For_Pico_W.{h,cpp}`, now removed), uploaded, and Enrico
+   confirmed all 4 wheels' direction, the neck's center/left/right, the
+   ultrasonic, the line tracker, and the comms-timeout watchdog all work —
+   **"funciona bien."** The reimplementation is now at full parity with the
+   driver it replaced, not just compile-verified.
 
 **As of 2026-09-15, the whole chain is verified for the first time**: neck centers
 correctly, all 4 wheels spin with correct direction in every command, and the
