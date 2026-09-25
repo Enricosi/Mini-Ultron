@@ -8,7 +8,53 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-24. **Today:** (1) Verified the Piper voice
+Last reviewed: 2026-09-25. **Today (2026-09-25):** Two features, at Enrico's explicit
+request (both firmware-compiled and Django-tested, **not uploaded to hardware** — that's
+Enrico's step). (1) **Ultron now reacts out loud when moved/picked up.** New shared
+CEREBRO "event" path: `conversation.cpp` watches `imuGetData().lastJoltMs` and, only
+while otherwise idle, reports it via a new `brainSubmitEvent()`/`POST /api/event`
+request — reusing the exact same THINKING->SPEAKING->HOLD flow and LLM/TTS pipeline as
+real speech, just with a synthetic `[EVENTO FÍSICO: ...]` prompt instead of a
+transcript (`Pipeline.handle_event()`, `EVENT_PROMPTS` registry in `pipeline.py`). New
+debug command `EVENT:JOLT` exercises the whole path over USB Serial without physically
+shaking the robot. **This supersedes the 2026-09-18 decision that "the IMU must not
+drive the face in real time"** — see the `imu.{h,cpp}` section below for why that
+changed. The crosstalk problem documented there is unchanged and still applies to this
+new reaction; Enrico is deferring the wiring fix until the chassis is printed and
+components are soldered, not treating it as a blocker for this feature. (2) **Modularity
+refactor**, per Enrico ("cada usuario tiene que ser capaz de agregar y quitar cosas de su
+Ultron"), scoped to two independent layers after a clarifying question:
+  - **Django**: personality is no longer a flat `personality.py` — new
+    `brain/personalities/` package (a `Personality` dataclass: system_prompt,
+    fallback_text, fallback_face; `ultron.py` is the only entry today).
+    `Pipeline` takes a `personality` argument instead of importing constants;
+    `services.py` resolves it from a new `ULTRON_PERSONALITY` setting (same pattern as
+    `LLM_PROVIDER`/`STT_BACKEND`/`TTS_BACKEND`). **More personalities are planned but not
+    built yet** — adding one later is one new module + one registry line. Also shortened
+    Ultron's spoken replies (was 2-3 sentences/20-35 words, now 1-2/12-22) per Enrico.
+  - **Firmware**: new `features.h` consolidates every previously-scattered compile flag
+    (`MINI_ULTRON_ENABLE_ARMS`, `MINI_ULTRON_BRAIN_MOVEMENT`, and a new
+    `MINI_ULTRON_ENABLE_IMU`) in one place instead of each being `#define`d wherever it
+    was first used. `MINI_ULTRON_ENABLE_IMU=0` (a build with no MPU6050 wired) compiles
+    `imu.cpp` to a harmless stub — verified by comparing flash size with/without the flag
+    (1120015 vs 1117411 bytes), confirming the real I2C code was actually excluded, not
+    just dead-code-eliminated by luck.
+  Both features have Django unit tests (66/66 pass) and three separate `arduino-cli`
+  compiles (default, `-DMINI_ULTRON_ENABLE_IMU=0`, `-DMINI_ULTRON_ENABLE_ARMS=1`), all
+  clean. Commits: `fc748da` (jolt reaction + face-variety prompt fix, see below),
+  `bd03c41` (modularity refactor).
+
+**Also today, smaller fix bundled into the jolt-reaction commit:** the personality
+prompt's face-selection instructions were being followed too narrowly in practice —
+Enrico noticed real conversations only ever used IDLE/ANGRY/THINKING/LISTENING/SPEAKING,
+never SURPRISED/SUSPICIOUS/SLEEPING/GLITCH (THINKING/LISTENING are ESP32-owned states,
+not LLM-chosen, so the LLM itself was really only picking IDLE/ANGRY/SPEAKING). Rewrote
+the face-vocabulary section of the prompt with concrete per-expression triggers and told
+the model SPEAKING is a fallback, not a default. Not re-verified against the real Groq
+API yet (no `eval_personality` re-run today) — worth checking next session once Enrico
+has a normal conversation with it.
+
+Last reviewed before that: 2026-09-24. (1) Verified the Piper voice
 `es_ES-davefx-medium`'s license (CC0, per its Hugging Face `MODEL_CARD`) and confirmed the
 `STT_BEAM_SIZE=5` fix against real home-lab conversation logs (not just the earlier 3-phrase
 synthetic test) — `journalctl --user -u cerebro.service` turns before vs. after the exact
@@ -551,10 +597,19 @@ roll/pitch from gravity, `joltCount`, `lastJoltMs`, read counters). Ranges +/-4 
 +/-500 dps, DLPF ~44 Hz; temperature deliberately not exposed (the board is an
 MPU6500-family clone, `WHO_AM_I=0x70`). Debug console: `IMU:STATUS`, `IMU:CAL`.
 
-**Enrico's decision 2026-09-18: the IMU must not drive the face in real time.** It only
-*records* that the robot was shaken (`joltCount`, `lastJoltMs`); nothing reacts. The
-future Django layer can read that as context ("I was shaken 3 s ago"). A temporary
-`imuFaceGlue` (jolt -> `FACE_SURPRISED`) was written and then removed.
+**Superseded 2026-09-25.** The 2026-09-18 decision above ("the IMU must not drive the
+face in real time", a temporary `imuFaceGlue` jolt->`FACE_SURPRISED` written and then
+removed) held until Enrico explicitly asked for the opposite: Ultron should speak when
+it notices it's being moved. `conversation.cpp` now watches `imuGetData().lastJoltMs`
+and, only while otherwise idle, reports a new jolt to CEREBRO via `brainSubmitEvent()` —
+see the `brain_link`/`conversation` section below. The difference from the old
+`imuFaceGlue` approach: this doesn't set a face directly, it starts a normal CEREBRO turn
+(personality decides the face, same as any spoken reply) through the existing
+THINKING->SPEAKING->HOLD state machine, not a special-cased hardware->face shortcut.
+Disable with `MINI_ULTRON_ENABLE_IMU 0` in `features.h` for a build with no MPU6050
+wired — `imu.cpp` then compiles to a stub (`ok` stays false, `joltCount` never
+increments), so `conversation.cpp` needs no `#if` of its own; the jolt reaction simply
+never fires.
 
 **KNOWN PROBLEM — the IMU data is unreliable while audio runs.** With the I2S clocks
 (BCLK/WS on GPIO9/10) active, ~28% of I2C reads fail and some "successful" reads carry
@@ -579,8 +634,9 @@ system as of this update — this is no longer a "likely deferred" design direct
 it is the confirmed v1 hardware state. All PCA9685 arm code
 (`handsNeutral/handsUp/leftHandOut/rightHandOut/waveRightHand`, the
 `Adafruit_PWMServoDriver` object, `Wire.begin(1, 48)`) lives in this module, gated
-behind `#define MINI_ULTRON_ENABLE_ARMS 0`. With the flag at 0 (current and
-intended state):
+behind `MINI_ULTRON_ENABLE_ARMS` (default 0, defined in `features.h` since
+2026-09-25 — previously defined inline in this file; see "Immediate next step"/
+features.h note). With the flag at 0 (current and intended state):
 - None of this code is compiled into the active build.
 - The main sketch never calls `Wire.begin()` or touches the PCA9685/I2C bus at all.
 - The debug console's `ARMS:*` commands respond `ERR:ARMS_DISABLED` instead of
@@ -658,13 +714,24 @@ Two real problems were found and fixed the same session:
   overwritten while it is uploaded). Prints one `[turn]` timing line per conversation. All names
   from the server are matched against exact vocabularies; unknown names are ignored. Neck intents map to
   `picoNeckCenter/Left/Right`. A failed turn shows `GLITCH`.
+- **New 2026-09-25 — physical-event turns.** `brain_link` gained a second request kind
+  (`brainSubmitEvent()` -> `POST /api/event`, alongside the existing utterance POST,
+  sharing the same `BrainState`/`BrainResult` shape). `conversation.h` exposes
+  `conversationTriggerEvent(name)`, which starts a turn exactly like a speech-end would
+  (`faceBefore` saved, `FACE_THINKING`, state -> `CV_THINKING`) but skips STT — CEREBRO
+  gets a synthetic `[EVENTO FÍSICO: ...]` prompt instead of a transcript. Only caller so
+  far: the IMU jolt check in `conversationUpdate()` (see `imu.{h,cpp}` above), gated to
+  fire only while `state == CV_IDLE` and deduped by `lastJoltMs` so the same jolt is never
+  reported twice. `EVENT:JOLT` (debug console) calls the same function manually, so the
+  whole path can be exercised over USB Serial with no IMU/motion required.
 - `motion`: abstract movement intent -> a fixed, bounded burst (speed 40, 800 ms, command re-sent
   every 200 ms, well under the Pico's 500 ms watchdog, then `STOP`); ends immediately on `OBSTACLE`
   or `STOPPED_TIMEOUT` from the Pico; aborted when the user starts speaking. **Compiled out by
-  default (`MINI_ULTRON_BRAIN_MOVEMENT 0`: intents are logged and ignored)** — Enrico's rule:
-  the robot currently sits on a laptop and must not move. Django also drops movement unless
-  `ULTRON_ALLOW_MOVEMENT=1`. Two independent opt-ins, and the Pico still owns watchdog/veto/STOP.
-- Debug console additions: `BRAIN:STATUS`, `MOTION:STOP`.
+  default (`MINI_ULTRON_BRAIN_MOVEMENT 0`, now defined in `features.h`: intents are logged and
+  ignored)** — Enrico's rule: the robot currently sits on a laptop and must not move. Django also
+  drops movement unless `ULTRON_ALLOW_MOVEMENT=1`. Two independent opt-ins, and the Pico still owns
+  watchdog/veto/STOP.
+- Debug console additions: `BRAIN:STATUS`, `MOTION:STOP`, `EVENT:JOLT` (2026-09-25).
 
 ### `hello_ultron.ino` — now just wiring
 
@@ -817,8 +884,20 @@ personality change is live for real conversations as of today.
 segments utterances; `HTTPClient` ships with the ESP32 core; curl-debuggable. WebSocket would only
 add streaming we don't need. `POST /api/converse` (raw PCM16 mono 16 kHz in, JSON out with
 `transcript`, `behavior{text,face,movement,neck}`, `audio{url,bytes,...}`, `timings_ms`) then
-`GET /api/audio/<id>` (raw PCM16 mono 16 kHz, Content-Length). Also `POST /api/converse_text`
-and `GET /api/health`. Details: `cerebro/README.md`.
+`GET /api/audio/<id>` (raw PCM16 mono 16 kHz, Content-Length). Also `POST /api/converse_text`,
+`POST /api/event` (`{"event": "JOLT", "session": "..."}`, new 2026-09-25 — see `Pipeline.handle_event()`
+and the `brain_link`/`conversation` section above), and `GET /api/health`. Details: `cerebro/README.md`.
+
+**Personality is now a registry, not a flat module (new 2026-09-25).** `brain/personalities/`
+holds a `Personality` dataclass (system_prompt, fallback_text, fallback_face) and a
+name->Personality dict; `personalities/ultron.py` is the only entry so far (more are
+planned, per Enrico, "otro día" — not built yet, just the extension point exists now).
+Selected via `ULTRON_PERSONALITY` (settings.py, default `"ultron"`), same pattern as
+`LLM_PROVIDER`/`STT_BACKEND`/`TTS_BACKEND`. `Pipeline` takes `personality=...` instead of
+importing `SYSTEM_PROMPT`/`FALLBACK_*` as constants. Also: Ultron's reply-length prompt
+constraint was shortened today (was 2-3 sentences/20-35 words, now 1-2/12-22) per Enrico —
+not yet re-verified against the real Groq API with `eval_personality` (which now takes
+`--personality`, defaulting to `ultron`).
 
 **Behavior schema (only vocabulary the LLM may use, `brain/schemas.py`):**
 `face` in IDLE, ANGRY, SURPRISED, SUSPICIOUS, SPEAKING, GLITCH, SLEEPING (the real `FaceState`
@@ -948,7 +1027,17 @@ No existing safety behavior was weakened.
 
 ## Immediate next step
 
-**As of 2026-09-21 (current):** brain-driven movement is back ON (server
+**As of 2026-09-25 (current), not yet on hardware — this is the first thing to do next
+session:** upload today's `hello_ultron` build and physically verify the jolt reaction
+(pick the robot up / bump it gently, confirm it speaks; or just run `EVENT:JOLT` over USB
+Serial first, which needs no IMU/no physical jolt at all and is the easier first check).
+Also worth a fresh `manage.py eval_personality` run — two prompt changes landed today
+(the face-variety rewrite, the shortened reply-length constraint) without being
+re-verified against the real Groq API. Neither change was requested to be uploaded this
+session (CLAUDE.md: physical actuation/upload is Enrico's step). Everything else below is
+unchanged from 2026-09-21/24 and still applies.
+
+**As of 2026-09-21:** brain-driven movement is back ON (server
 `ULTRON_ALLOW_MOVEMENT=1`, ESP32 flashed with `-DMINI_ULTRON_BRAIN_MOVEMENT=1`) and
 Enrico confirmed it moves correctly by voice — **left ON, not reverted this time**
 (Enrico's call: "dejemos el movimiento así por ahora"). The 9-color emotion LEDs
