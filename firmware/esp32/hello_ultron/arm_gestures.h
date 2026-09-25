@@ -7,12 +7,13 @@
   active v1 path by default so nothing in normal operation depends on the
   PCA9685/I2C bus.
 
-  Flip this to 1 to bring PCA9685 arm gestures back into the active build.
+  Flip MINI_ULTRON_ENABLE_ARMS to 1 in features.h to bring PCA9685 arm
+  gestures back into the active build.
 **********************************************************************/
 #ifndef ARM_GESTURES_H
 #define ARM_GESTURES_H
 
-#define MINI_ULTRON_ENABLE_ARMS 0
+#include "features.h"
 
 #if MINI_ULTRON_ENABLE_ARMS
 void armsInit();

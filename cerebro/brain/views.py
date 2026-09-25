@@ -143,5 +143,6 @@ def health(request):
             "stt": {"backend": pipeline.stt.name, "model": getattr(pipeline.stt, "model_name", "")},
             "tts": {"backend": pipeline.tts.name, "voice": getattr(pipeline.tts, "voice_name", "")},
             "movement_allowed": pipeline.allow_movement,
+            "personality": pipeline.personality.name,
         }
     )

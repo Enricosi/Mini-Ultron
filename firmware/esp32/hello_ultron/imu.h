@@ -17,11 +17,17 @@
 
   Note: arm_gestures.cpp (compiled out, MINI_ULTRON_ENABLE_ARMS 0) calls
   Wire.begin() on other pins; do not enable it alongside this module.
+
+  Disabled with MINI_ULTRON_ENABLE_IMU 0 (features.h, e.g. a build with no IMU
+  wired): every function below still exists but becomes a harmless stub
+  (imuGetData().ok stays false, no jolt ever fires), so callers - including
+  conversation.cpp's jolt reaction - need no #if of their own.
 **********************************************************************/
 #ifndef IMU_H
 #define IMU_H
 
 #include <Arduino.h>
+#include "features.h"
 
 struct ImuData {
   float ax, ay, az;      // g

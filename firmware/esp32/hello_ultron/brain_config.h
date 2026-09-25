@@ -10,6 +10,9 @@
 #ifndef BRAIN_CONFIG_H
 #define BRAIN_CONFIG_H
 
+// wifi_config.h (if present) may #define MINI_ULTRON_BRAIN_MOVEMENT 1 itself: include it
+// before features.h so that override wins over features.h's #ifndef default, with no
+// macro-redefinition warning either way.
 #if __has_include("wifi_config.h")
 #include "wifi_config.h"
 #define CEREBRO_CONFIGURED 1
@@ -17,9 +20,6 @@
 #define CEREBRO_CONFIGURED 0
 #endif
 
-// Movement from CEREBRO is opt-in (see wifi_config.example.h).
-#ifndef MINI_ULTRON_BRAIN_MOVEMENT
-#define MINI_ULTRON_BRAIN_MOVEMENT 0
-#endif
+#include "features.h"  // MINI_ULTRON_BRAIN_MOVEMENT default, if wifi_config.h didn't set it
 
 #endif

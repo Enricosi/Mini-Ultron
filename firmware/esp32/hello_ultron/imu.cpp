@@ -1,4 +1,7 @@
 #include "imu.h"
+
+#if MINI_ULTRON_ENABLE_IMU
+
 #include <Wire.h>
 
 static const int IMU_SDA = 13;
@@ -186,3 +189,14 @@ void imuUpdate(unsigned long now) {
 ImuData imuGetData() {
   return data;
 }
+
+#else  // ---- MINI_ULTRON_ENABLE_IMU 0: no IMU wired, harmless stub ----
+
+static ImuData data;
+
+void imuInit() { Serial.println("[imu] disabled (MINI_ULTRON_ENABLE_IMU is 0)"); }
+void imuUpdate(unsigned long) {}
+ImuData imuGetData() { return data; }  // ok=false, joltCount=0: never fires
+void imuStartCalibration() {}
+
+#endif

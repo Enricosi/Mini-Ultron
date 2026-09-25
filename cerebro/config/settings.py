@@ -118,6 +118,7 @@ TTS_PRESENCE = env_float("TTS_PRESENCE", 0.5)  # >1.5 kHz clarity; raise it if c
 # Movement is OFF until you turn it on: the LLM may *ask* for a movement, but Django
 # drops it (movement=NONE) unless this is true. Turn on only when the robot is safe to move.
 ULTRON_ALLOW_MOVEMENT = env_bool("ULTRON_ALLOW_MOVEMENT", False)
+ULTRON_PERSONALITY = env("ULTRON_PERSONALITY", "ultron")  # see brain/personalities/
 ULTRON_HISTORY_TURNS = env_int("ULTRON_HISTORY_TURNS", 4)  # fewer turns = fewer tokens/minute
 ULTRON_MAX_REPLY_CHARS = env_int("ULTRON_MAX_REPLY_CHARS", 300)
 ULTRON_SAVE_DEBUG_AUDIO = env_bool("ULTRON_SAVE_DEBUG_AUDIO", True)

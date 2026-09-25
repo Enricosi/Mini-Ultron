@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from . import audio_utils
 from .llm import LLMBackend, LLMError
-from .personality import FALLBACK_FACE, FALLBACK_TEXT, SYSTEM_PROMPT
+from .personalities import DEFAULT_PERSONALITY, Personality
 from .schemas import Behavior, BehaviorError, apply_policy, parse_behavior
 from .stt import STTBackend, is_hallucination
 from .tts import Speech, TTSBackend, TTSError
@@ -25,9 +25,10 @@ logger = logging.getLogger("brain.pipeline")
 
 MIN_AUDIO_S = 0.3  # shorter than this is a click, not speech
 
-# Physical events a controller can report instead of an utterance (see personality.py's
-# "EVENTOS FÍSICOS"). The firmware sends the bare name; unknown names are ignored, same
-# policy as an unparseable LLM field elsewhere in this pipeline.
+# Physical events a controller can report instead of an utterance (see each personality's
+# "EVENTOS FÍSICOS" prompt section, e.g. personalities/ultron.py). The firmware sends the
+# bare name; unknown names are ignored, same policy as an unparseable LLM field elsewhere
+# in this pipeline. Not personality-specific itself (yet) - one shared vocabulary.
 EVENT_PROMPTS = {
     "JOLT": (
         "[EVENTO FÍSICO: alguien te acaba de agarrar o mover bruscamente, sin avisar, "
@@ -101,9 +102,11 @@ class Pipeline:
         audio_store: AudioStore | None = None,
         allow_movement: bool = False,
         max_reply_chars: int = 280,
+        personality: Personality = DEFAULT_PERSONALITY,
     ):
         self.stt = stt
         self.llm = llm
+        self.personality = personality
         self.tts = tts
         self.history = history or History()
         self.audio_store = audio_store or AudioStore()
@@ -156,7 +159,7 @@ class Pipeline:
         return turn
 
     def _respond(self, turn: Turn, user_text: str, session: str, t0: float) -> Turn:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": self.personality.system_prompt}]
         messages += self.history.messages(session)
         messages.append({"role": "user", "content": user_text})
 
@@ -167,7 +170,7 @@ class Pipeline:
         except (LLMError, BehaviorError) as exc:
             logger.warning("LLM/behavior failure, using fallback: %s", exc)
             turn.warnings.append(f"fallback: {exc}")
-            behavior = Behavior(text=FALLBACK_TEXT, face=FALLBACK_FACE)
+            behavior = Behavior(text=self.personality.fallback_text, face=self.personality.fallback_face)
         turn.timings_ms["llm"] = _ms(t)
 
         requested_movement = behavior.movement

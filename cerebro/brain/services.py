@@ -5,6 +5,7 @@ import threading
 from django.conf import settings
 
 from .llm import FakeLLM, OpenAICompatLLM
+from .personalities import get_personality
 from .pipeline import AudioStore, History, Pipeline
 from .stt import FakeSTT, FasterWhisperSTT
 from .tts import FakeTTS, PiperTTS
@@ -63,6 +64,10 @@ def build_tts():
     )
 
 
+def build_personality():
+    return get_personality(settings.ULTRON_PERSONALITY)
+
+
 def get_pipeline() -> Pipeline:
     global _pipeline
     if _pipeline is None:
@@ -76,6 +81,7 @@ def get_pipeline() -> Pipeline:
                     audio_store=AudioStore(),
                     allow_movement=settings.ULTRON_ALLOW_MOVEMENT,
                     max_reply_chars=settings.ULTRON_MAX_REPLY_CHARS,
+                    personality=build_personality(),
                 )
     return _pipeline
 
@@ -95,7 +101,7 @@ def preload() -> None:
         except Exception:  # keep the server up; the error resurfaces per request
             logger.exception("preload failed for %s", backend.name)
     logger.info(
-        "CEREBRO ready: llm=%s/%s stt=%s/%s tts=%s/%s movement=%s",
+        "CEREBRO ready: llm=%s/%s stt=%s/%s tts=%s/%s movement=%s personality=%s",
         pipeline.llm.name,
         getattr(pipeline.llm, "model", "-"),
         pipeline.stt.name,
@@ -103,4 +109,5 @@ def preload() -> None:
         pipeline.tts.name,
         getattr(pipeline.tts, "voice_name", "-"),
         "ALLOWED" if pipeline.allow_movement else "off",
+        pipeline.personality.name,
     )

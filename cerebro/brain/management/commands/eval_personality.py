@@ -18,7 +18,7 @@ import time
 from django.core.management.base import BaseCommand
 
 from brain.llm import LLMError, OpenAICompatLLM
-from brain.personality import SYSTEM_PROMPT
+from brain.personalities import PERSONALITIES, get_personality
 from brain.schemas import BehaviorError, parse_behavior
 
 # (label, provider, model, reasoning_effort). reasoning_effort is only sent for
@@ -54,6 +54,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--model", help="only run the candidate whose model id matches this")
         parser.add_argument("--case", help="only run this case name")
+        parser.add_argument(
+            "--personality", default="ultron",
+            help=f"which personality's prompt to test, one of {sorted(PERSONALITIES)}",
+        )
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         parser.add_argument(
             "--delay", type=float, default=1.5,
@@ -69,6 +73,11 @@ class Command(BaseCommand):
         if not cases:
             self.stderr.write("no case matches --case")
             return
+        try:
+            system_prompt = get_personality(options["personality"]).system_prompt
+        except KeyError as exc:
+            self.stderr.write(str(exc))
+            return
 
         results = []
         for label, provider, model, reasoning_effort in candidates:
@@ -82,7 +91,7 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.MIGRATE_HEADING(f"\n=== {label} ==="))
             for case_name, turns in cases.items():
                 turns = turns if isinstance(turns, list) else [turns]
-                messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+                messages = [{"role": "system", "content": system_prompt}]
                 for turn_text in turns:
                     messages.append({"role": "user", "content": turn_text})
                     time.sleep(options["delay"])
