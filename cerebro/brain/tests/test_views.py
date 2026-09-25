@@ -69,6 +69,15 @@ class ApiTests(SimpleTestCase):
         bad = self.client.post("/api/converse_text", data="{not json", content_type="application/json")
         self.assertEqual(bad.status_code, 400)
 
+    def test_event(self):
+        r = self.client.post("/api/event", data=json.dumps({"event": "jolt"}), content_type="application/json")
+        self.assertEqual(r.json()["transcript"], "[event:JOLT]")
+        self.assertFalse(r.json()["ignored"])
+        bad = self.client.post("/api/event", data=json.dumps({"event": "NOPE"}), content_type="application/json")
+        self.assertEqual((bad.json()["ignored"], bad.json()["reason"]), (True, "unknown_event"))
+        malformed = self.client.post("/api/event", data="{not json", content_type="application/json")
+        self.assertEqual(malformed.status_code, 400)
+
     def test_unknown_audio_id_404(self):
         self.assertEqual(self.client.get("/api/audio/nope").status_code, 404)
 

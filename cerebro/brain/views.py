@@ -6,6 +6,8 @@ HTTP API used by the ESP32 (and by curl for debugging).
                            -> JSON: transcript, behavior, audio{url,...}, timings_ms
   GET  /api/audio/<id>     the reply audio: raw PCM16LE mono 16 kHz (Content-Length set)
   POST /api/converse_text  {"text": "...", "session": "..."} -> same JSON (no STT; for testing)
+  POST /api/event          {"event": "JOLT", "session": "..."} -> same JSON (no STT/utterance;
+                           a controller-reported physical event, see pipeline.EVENT_PROMPTS)
   GET  /api/health         which backends are configured (never returns secrets)
 """
 import logging
@@ -93,6 +95,25 @@ def converse_text(request):
         turn = services.get_pipeline().handle_text(text, session)
     except Exception:
         logger.exception("converse_text failed")
+        return JsonResponse({"ok": False, "error": "internal_error"}, status=500)
+    return JsonResponse(_turn_json(turn))
+
+
+@csrf_exempt
+@require_POST
+def event(request):
+    import json
+
+    try:
+        payload = json.loads(request.body or b"{}")
+        event_name = str(payload.get("event", "")).strip().upper()
+        session = str(payload.get("session", "default"))[:64]
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
+    try:
+        turn = services.get_pipeline().handle_event(event_name, session)
+    except Exception:
+        logger.exception("event failed")
         return JsonResponse({"ok": False, "error": "internal_error"}, status=500)
     return JsonResponse(_turn_json(turn))
 

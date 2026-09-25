@@ -14,6 +14,11 @@
   behavior: LISTENING while speech is detected, restoring the previous face after.
   Names coming from CEREBRO are matched against exact vocabularies here; anything
   unknown is ignored.
+
+  A physical event (currently: an IMU jolt, see imu.h) can also start a turn instead
+  of speech: conversationUpdate() watches imuGetData() and, when idle, reports a new
+  jolt the same way debug_console's EVENT:JOLT does, via conversationTriggerEvent().
+  It reuses THINKING/SPEAKING/HOLD as-is; CEREBRO decides what (if anything) to say.
 **********************************************************************/
 #ifndef CONVERSATION_H
 #define CONVERSATION_H
@@ -22,5 +27,11 @@
 
 void conversationInit();
 void conversationUpdate(unsigned long now);  // call every loop() iteration - non-blocking
+
+// Reports a physical event to CEREBRO as if it were a turn (see brain_link's
+// EVENT_PROMPTS-backed vocabulary, currently just "JOLT"). False if a turn is already
+// in progress or the brain link is busy/disabled: the caller should just drop it, the
+// event was not "lost" in any safety sense, there is simply nothing to react to yet.
+bool conversationTriggerEvent(const char *eventName);
 
 #endif

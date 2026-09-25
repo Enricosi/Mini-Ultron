@@ -6,6 +6,7 @@
 #include "audio.h"
 #include "imu.h"
 #include "brain_link.h"
+#include "conversation.h"
 #include "motion.h"
 
 static char buffer[64];
@@ -22,6 +23,7 @@ static void printHelp() {
         "  AUDIO:STATUS | AUDIO:BEEP | AUDIO:REPLAY (replays the last detected utterance)\n"
         "  BRAIN:STATUS (wifi / CEREBRO link) | MOTION:STOP\n"
         "  IMU:STATUS | IMU:CAL (keep the robot still for ~1 s)\n"
+        "  EVENT:JOLT (ask CEREBRO to react as if a jolt was just detected)\n"
         "  ARMS:NEUTRAL|UP|LEFT|RIGHT|WAVE (deferred in v1, see arm_gestures.h)\n"
         "  HELP"));
 }
@@ -146,6 +148,14 @@ static void handleImu(const String &action) {
     }
 }
 
+static void handleEvent(const String &name) {
+    if (name != "JOLT") {
+        Serial.println("ERR:PARSE");
+        return;
+    }
+    Serial.println(conversationTriggerEvent(name.c_str()) ? "OK" : "ERR:BUSY_OR_BRAIN_DISABLED");
+}
+
 static void handleArms(const String &action) {
 #if MINI_ULTRON_ENABLE_ARMS
     if (action == "NEUTRAL") handsNeutral();
@@ -215,6 +225,7 @@ static void handleLine(const String &line) {
     if (verb == "BRAIN") { handleBrain(rest); return; }
     if (verb == "MOTION") { handleMotion(rest); return; }
     if (verb == "IMU") { handleImu(rest); return; }
+    if (verb == "EVENT") { handleEvent(rest); return; }
     if (verb == "ARMS") { handleArms(rest); return; }
     if (verb == "MOVE" || verb == "ROTATE") { handleMoveOrRotate(verb, rest); return; }
 

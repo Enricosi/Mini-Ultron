@@ -1,9 +1,11 @@
 /**********************************************************************
   Link to CEREBRO (the Django brain on the home-lab server) over Wi-Fi/HTTP.
 
-  One request per utterance, in a FreeRTOS task so the face and UART keep
-  running while the server thinks:
+  One request in flight at a time, in a FreeRTOS task so the face and UART
+  keep running while the server thinks. Two kinds of request share the same
+  BUSY/DONE result shape:
     POST /api/converse  (utterance PCM16 mono 16 kHz)  -> JSON behavior + audio URL
+    POST /api/event     ({"event":"JOLT",...})          -> same JSON, no utterance
     GET  <audio url>                                    -> reply PCM16 mono 16 kHz
   The reply is kept in PSRAM; conversation.cpp hands it to the audio module.
 
@@ -41,6 +43,7 @@ void brainInit();
 BrainState brainState();
 bool brainWifiConnected();
 bool brainSubmitUtterance(const int16_t *pcm, size_t samples);  // false if busy/disabled
+bool brainSubmitEvent(const char *eventName);                   // false if busy/disabled
 bool brainTakeResult(BrainResult *out);   // true once when DONE; back to IDLE
 const int16_t *brainReplyPcm(size_t *samples);
 void brainPrintStatus();                  // for the debug console

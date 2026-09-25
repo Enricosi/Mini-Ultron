@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("converse", views.converse),
     path("converse_text", views.converse_text),
+    path("event", views.event),
     path("audio/<str:audio_id>", views.audio),
     path("health", views.health),
 ]

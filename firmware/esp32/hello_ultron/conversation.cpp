@@ -2,6 +2,7 @@
 #include "audio.h"
 #include "brain_link.h"
 #include "face.h"
+#include "imu.h"
 #include "motion.h"
 #include "pico_link.h"
 
@@ -13,6 +14,7 @@ static ConvState state = CV_IDLE;
 static FaceState faceBefore = FACE_IDLE;
 static unsigned long holdUntil = 0;
 static bool wasPlaying = false;
+static unsigned long lastReactedJoltMs = 0;  // dedupes imuGetData().lastJoltMs
 
 // Turn timing (printed once per turn so latency can be attacked later).
 static unsigned long tSpeechEnd = 0, tPlayStart = 0;
@@ -74,11 +76,32 @@ static void onBrainResult(unsigned long now, const BrainResult &r) {
   }
 }
 
+bool conversationTriggerEvent(const char *eventName) {
+  if (state != CV_IDLE) return false;
+  if (!brainSubmitEvent(eventName)) return false;
+  faceBefore = getFace();
+  setFace(FACE_THINKING);
+  state = CV_THINKING;
+  Serial.printf("[conversation] event %s -> CEREBRO\n", eventName);
+  return true;
+}
+
 void conversationInit() {
   audioDeafAfterUtterance(brainState() != BRAIN_DISABLED);
 }
 
 void conversationUpdate(unsigned long now) {
+  // A jolt is a physical event, not speech: only report it while otherwise idle, so it
+  // never interrupts a turn already in progress. imu.cpp already debounces/cooldowns the
+  // jolt itself; lastReactedJoltMs just stops us from reporting the same one twice.
+  if (state == CV_IDLE) {
+    unsigned long joltMs = imuGetData().lastJoltMs;
+    if (joltMs != 0 && joltMs != lastReactedJoltMs) {
+      lastReactedJoltMs = joltMs;
+      conversationTriggerEvent("JOLT");
+    }
+  }
+
   AudioEvent e;
   while ((e = audioPollEvent()) != AUDIO_EVENT_NONE) {
     if (e == AUDIO_EVENT_SPEECH_START && state == CV_IDLE) {

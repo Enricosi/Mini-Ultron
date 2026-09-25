@@ -110,6 +110,19 @@ class PipelineTests(SimpleTestCase):
     def test_empty_text_is_ignored(self):
         self.assertTrue(make().handle_text("   ").ignored)
 
+    def test_known_event_reaches_the_llm_and_speaks(self):
+        llm = FakeLLM()
+        turn = make(llm=llm).handle_event("JOLT")
+        self.assertFalse(turn.ignored)
+        self.assertIsNotNone(turn.audio_id)
+        msgs = llm.calls[0]
+        self.assertIn("EVENTO FÍSICO", msgs[-1]["content"])
+
+    def test_unknown_event_is_ignored_without_calling_the_llm(self):
+        llm = FakeLLM()
+        turn = make(llm=llm).handle_event("NOT_A_REAL_EVENT")
+        self.assertEqual((turn.ignored, turn.ignored_reason, llm.calls), (True, "unknown_event", []))
+
     def test_prompt_contains_system_and_user_text(self):
         llm = FakeLLM()
         make(llm=llm).handle_text("hola")

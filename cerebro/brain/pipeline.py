@@ -25,6 +25,17 @@ logger = logging.getLogger("brain.pipeline")
 
 MIN_AUDIO_S = 0.3  # shorter than this is a click, not speech
 
+# Physical events a controller can report instead of an utterance (see personality.py's
+# "EVENTOS FÍSICOS"). The firmware sends the bare name; unknown names are ignored, same
+# policy as an unparseable LLM field elsewhere in this pipeline.
+EVENT_PROMPTS = {
+    "JOLT": (
+        "[EVENTO FÍSICO: alguien te acaba de agarrar o mover bruscamente, sin avisar, "
+        "y lo sentiste con tu propio cuerpo] Reacciona con UNA frase corta y digna de "
+        "villano: indignación, sospecha o advertencia. No preguntes qué pasó, ya lo sabes."
+    ),
+}
+
 
 class AudioStore:
     """The last few generated replies, so the ESP32 can GET them by id."""
@@ -126,6 +137,14 @@ class Pipeline:
         if not turn.transcript:
             return self._ignore(turn, "empty_text", t0)
         return self._respond(turn, turn.transcript, session, t0)
+
+    def handle_event(self, event: str, session: str = "default") -> Turn:
+        t0 = time.perf_counter()
+        turn = Turn(transcript=f"[event:{event}]")
+        prompt = EVENT_PROMPTS.get(event)
+        if prompt is None:
+            return self._ignore(turn, "unknown_event", t0)
+        return self._respond(turn, prompt, session, t0)
 
     # ---- internals ---------------------------------------------------------------
 

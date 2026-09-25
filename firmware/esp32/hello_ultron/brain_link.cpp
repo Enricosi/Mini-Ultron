@@ -12,11 +12,15 @@ static const uint32_t POST_TIMEOUT_MS = 30000;     // STT + LLM + TTS on the ser
 static const uint32_t GET_TIMEOUT_MS = 10000;
 static const uint32_t WIFI_WAIT_MS = 8000;
 
+enum RequestKind { REQ_UTTERANCE, REQ_EVENT };
+
 static volatile BrainState state = BRAIN_IDLE;
 static BrainResult result;
 static int16_t *replyBuf = nullptr;
 static const int16_t *pendingPcm = nullptr;
 static size_t pendingSamples = 0;
+static RequestKind pendingKind = REQ_UTTERANCE;
+static char pendingEvent[16] = {0};
 static bool serverChecked = false;
 
 static String baseUrl() {
@@ -110,10 +114,22 @@ static void runRequest() {
   uint32_t t0 = millis();
   HTTPClient http;
   http.setTimeout(POST_TIMEOUT_MS);
-  http.begin(baseUrl() + "/api/converse");
-  http.addHeader("Content-Type", "application/octet-stream");
-  http.addHeader("X-Session-Id", "mini-ultron");
-  int code = http.POST((uint8_t *)pendingPcm, pendingSamples * sizeof(int16_t));
+  int code;
+  if (pendingKind == REQ_EVENT) {
+    http.begin(baseUrl() + "/api/event");
+    http.addHeader("Content-Type", "application/json");
+    JsonDocument reqDoc;
+    reqDoc["event"] = pendingEvent;
+    reqDoc["session"] = "mini-ultron";
+    String reqBody;
+    serializeJson(reqDoc, reqBody);
+    code = http.POST(reqBody);
+  } else {
+    http.begin(baseUrl() + "/api/converse");
+    http.addHeader("Content-Type", "application/octet-stream");
+    http.addHeader("X-Session-Id", "mini-ultron");
+    code = http.POST((uint8_t *)pendingPcm, pendingSamples * sizeof(int16_t));
+  }
   if (code != 200) {
     http.end();
     fail(code > 0 ? "server returned an error" : "request failed (network/timeout)");
@@ -135,10 +151,15 @@ static void runRequest() {
 
   if (doc["ignored"] | false) {
     result.ignored = true;
-    Serial.printf("[brain] server ignored the utterance: %s\n", doc["reason"] | "?");
+    Serial.printf("[brain] server ignored the %s: %s\n",
+                  pendingKind == REQ_EVENT ? "event" : "utterance", doc["reason"] | "?");
     return;
   }
-  Serial.printf("[brain] heard: \"%s\"\n", doc["transcript"] | "");
+  if (pendingKind == REQ_EVENT) {
+    Serial.printf("[brain] event %s\n", pendingEvent);
+  } else {
+    Serial.printf("[brain] heard: \"%s\"\n", doc["transcript"] | "");
+  }
   Serial.printf("[brain] says: \"%s\"\n", doc["behavior"]["text"] | "");
   strlcpy(result.face, doc["behavior"]["face"] | "SPEAKING", sizeof(result.face));
   strlcpy(result.movement, doc["behavior"]["movement"] | "NONE", sizeof(result.movement));
@@ -196,8 +217,17 @@ bool brainWifiConnected() { return WiFi.status() == WL_CONNECTED; }
 
 bool brainSubmitUtterance(const int16_t *pcm, size_t samples) {
   if (state != BRAIN_IDLE || !pcm || samples == 0) return false;
+  pendingKind = REQ_UTTERANCE;
   pendingPcm = pcm;
   pendingSamples = samples;
+  state = BRAIN_BUSY;  // set last: the task reads the fields above after seeing this
+  return true;
+}
+
+bool brainSubmitEvent(const char *eventName) {
+  if (state != BRAIN_IDLE || !eventName || !eventName[0]) return false;
+  pendingKind = REQ_EVENT;
+  strlcpy(pendingEvent, eventName, sizeof(pendingEvent));
   state = BRAIN_BUSY;  // set last: the task reads the fields above after seeing this
   return true;
 }
@@ -227,6 +257,7 @@ void brainInit() {
 BrainState brainState() { return BRAIN_DISABLED; }
 bool brainWifiConnected() { return false; }
 bool brainSubmitUtterance(const int16_t *, size_t) { return false; }
+bool brainSubmitEvent(const char *) { return false; }
 bool brainTakeResult(BrainResult *) { return false; }
 const int16_t *brainReplyPcm(size_t *samples) { *samples = 0; return nullptr; }
 void brainPrintStatus() { Serial.println("BRAIN: disabled (no wifi_config.h)"); }
