@@ -31,9 +31,11 @@ it (prompt: only on an explicit order, never on its own or on an event) AND
 `DANCE_ORDER_RE` (`bail…`, `danz…`, `calabaza`) — events can never dance. 71 Django tests pass
 (5 new). ESP32: `BrainResult.animation` → `conversation.cpp` queues it and plays it once right
 after the reply is spoken (hold skipped); speaking to Ultron cancels it. Firmware **UPLOADED**
-(IMU=0 build). **Django NOT deployed** — the deploy was blocked by the session's permission
-policy, so the server still runs the pre-2026-09-25 code (no `animation`, no `/api/event`);
-old server + new firmware is compatible (missing field = no dance).
+(IMU=0 build). **Django DEPLOYED** to the home-lab (with Enrico's permission; brings the
+2026-09-25 personality registry + `/api/event` along), `/api/health` shows
+`"personality": "ultron"`. Verified via `/api/converse_text` against real Groq: "Ultron, baila
+la calabaza" → `animation: CALABAZA`; "Hola Ultron, ¿qué tal tu plan?" → `NONE`. Not yet tried
+by voice on the robot.
 **Previously (2026-09-25):** Two features, at Enrico's explicit
 request (both firmware-compiled and Django-tested, **not uploaded to hardware** — that's
 Enrico's step). (1) **Ultron now reacts out loud when moved/picked up.** New shared
@@ -1074,19 +1076,17 @@ No existing safety behavior was weakened.
 ## Immediate next step
 
 **NEXT SESSION — start here (written 2026-09-29):**
-0. **Deploy Django** (Enrico runs it, or grants permission): `rsync -a --delete --exclude var/
+0. ~~Deploy Django~~ — **done 2026-09-29** (deploy = `rsync -a --delete --exclude var/
    --exclude .env --exclude __pycache__/ cerebro/ <user>@<server>:~/mini-ultron/cerebro/`
-   then `ssh <user>@<server> 'systemctl --user restart cerebro'`. Dry run showed exactly
-   the 2026-09-25 + 2026-09-29 changes (incl. deleting the old `brain/personality.py`). Verify
-   `/api/health` shows `"personality": "ultron"`.
-   Then **say "Ultron, baila la calabaza"** → he should answer in character, then dance once;
+   + `ssh <user>@<server> 'systemctl --user restart cerebro'`). Text-path check passed.
+   Remaining: **say "Ultron, baila la calabaza"** → he should answer in character, then dance once;
    and say something unrelated → must NOT dance. Check the server log line
    (`[face/movement/neck/animation]`) and `animation ... dropped` warnings.
 1. **False jolts** — the jolt reaction must not ship as-is: needs a crosstalk fix (wiring, or
    a firmware filter, e.g. ignore reads flagged failed / require N consecutive) before the IMU
    build goes back on. Until then the board runs `MINI_ULTRON_ENABLE_IMU=0` (see top summary).
-2. **Deploy Django to the home-lab** (`/api/event` 404) and run `eval_personality` — the
-   2026-09-25 items below.
+2. Run `eval_personality` (the 2026-09-25 prompt changes + today's `animation` rule, against
+   real Groq). `/api/event` is deployed now, but stays unused while the IMU build is off.
 3. ~~Voice-triggered animations~~ — implemented 2026-09-29, pending item 0's deploy + test.
    Adding another dance later: convert → register in `anim_library.cpp` → add its UPPERCASE
    name to `schemas.ANIMATIONS` → mention it in `personalities/ultron.py`.
