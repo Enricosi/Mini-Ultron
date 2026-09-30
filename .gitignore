@@ -11,3 +11,6 @@ cerebro/var/
 
 # ESP32 Wi-Fi/server credentials (copy wifi_config.example.h to wifi_config.h)
 firmware/esp32/hello_ultron/wifi_config.h
+
+# tools/anim/anim_convert.py default output dir
+anim_out/

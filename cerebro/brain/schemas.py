@@ -10,7 +10,7 @@ ESP32 sets itself, not something the LLM picks.
 """
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 FACES = ("IDLE", "ANGRY", "SURPRISED", "SUSPICIOUS", "SPEAKING", "GLITCH", "SLEEPING")
 MOVEMENTS = (
@@ -23,10 +23,18 @@ MOVEMENTS = (
     "ROTATE_RIGHT",
 )
 NECKS = ("NONE", "CENTER", "LEFT", "RIGHT")
+# Custom face animations built into the ESP32 firmware (anim_library.cpp). Each name
+# here must exist there; the firmware lowercases it and ignores unknown names.
+ANIMATIONS = ("NONE", "CALABAZA")
 
 DEFAULT_FACE = "SPEAKING"  # the plain "talking" face
 DEFAULT_MOVEMENT = "NONE"
 DEFAULT_NECK = "NONE"
+DEFAULT_ANIMATION = "NONE"
+
+# An animation only plays when the user literally asked for a dance in this very
+# utterance - the LLM choosing one is not enough (see apply_animation_policy).
+DANCE_ORDER_RE = re.compile(r"\bbail|\bdanz|calabaza", re.IGNORECASE)
 
 # Strict-mode friendly (all fields required, no extra properties).
 BEHAVIOR_JSON_SCHEMA = {
@@ -36,8 +44,9 @@ BEHAVIOR_JSON_SCHEMA = {
         "face": {"type": "string", "enum": list(FACES)},
         "movement": {"type": "string", "enum": list(MOVEMENTS)},
         "neck": {"type": "string", "enum": list(NECKS)},
+        "animation": {"type": "string", "enum": list(ANIMATIONS)},
     },
-    "required": ["text", "face", "movement", "neck"],
+    "required": ["text", "face", "movement", "neck", "animation"],
     "additionalProperties": False,
 }
 
@@ -52,6 +61,7 @@ class Behavior:
     face: str = DEFAULT_FACE
     movement: str = DEFAULT_MOVEMENT
     neck: str = DEFAULT_NECK
+    animation: str = DEFAULT_ANIMATION
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -102,7 +112,7 @@ def _coerce_enum(value, allowed, default, field, warnings) -> str:
 
 def parse_behavior(raw: str, max_chars: int = 280) -> tuple[Behavior, list[str]]:
     """
-    Turn raw LLM output into a Behavior. Unknown/missing face, movement or neck are
+    Turn raw LLM output into a Behavior. Unknown/missing face, movement, neck or animation are
     replaced with safe defaults (and reported in `warnings`); missing text is fatal.
     """
     data = extract_json(raw)
@@ -123,6 +133,9 @@ def parse_behavior(raw: str, max_chars: int = 280) -> tuple[Behavior, list[str]]
                 data.get("movement"), MOVEMENTS, DEFAULT_MOVEMENT, "movement", warnings
             ),
             neck=_coerce_enum(data.get("neck"), NECKS, DEFAULT_NECK, "neck", warnings),
+            animation=_coerce_enum(
+                data.get("animation"), ANIMATIONS, DEFAULT_ANIMATION, "animation", warnings
+            ),
         ),
         warnings,
     )
@@ -131,5 +144,17 @@ def parse_behavior(raw: str, max_chars: int = 280) -> tuple[Behavior, list[str]]
 def apply_policy(behavior: Behavior, allow_movement: bool) -> Behavior:
     """Server-side gate applied after validation. Movement is dropped unless enabled."""
     if not allow_movement and behavior.movement != DEFAULT_MOVEMENT:
-        return Behavior(behavior.text, behavior.face, DEFAULT_MOVEMENT, behavior.neck)
+        return replace(behavior, movement=DEFAULT_MOVEMENT)
     return behavior
+
+
+def apply_animation_policy(behavior: Behavior, user_speech: str | None) -> Behavior:
+    """
+    Dance only on an explicit order: the animation is dropped unless the user's own
+    words (never an event prompt - pass None for those) contain a dance request.
+    """
+    if behavior.animation == DEFAULT_ANIMATION:
+        return behavior
+    if user_speech and DANCE_ORDER_RE.search(user_speech):
+        return behavior
+    return replace(behavior, animation=DEFAULT_ANIMATION)

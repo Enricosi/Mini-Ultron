@@ -29,4 +29,11 @@ FaceState getFace();
 void faceUpdate(unsigned long now);  // call every loop() iteration - non-blocking
 const char *faceStateName(FaceState state);  // canonical name, e.g. "ANGRY"
 
+// Custom 1-bit animations (anim_player.h). While one plays it replaces the
+// state's own animation; any setFace() call cancels it (the conversation flow
+// always wins), and when a non-looping one ends the current state is redrawn.
+bool facePlayAnimation(const char *name, bool loop);  // false = unknown/invalid
+void faceStopAnimation();
+bool faceAnimationPlaying();
+
 #endif

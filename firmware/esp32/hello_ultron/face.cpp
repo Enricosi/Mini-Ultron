@@ -3,6 +3,7 @@
 #include <Adafruit_SSD1331.h>
 #include <SPI.h>
 #include "pico_link.h"
+#include "anim_player.h"
 
 // OLED wiring - VERIFIED, do not change without updating docs/CURRENT_STATE.md.
 static const int OLED_SCLK = 47;
@@ -47,6 +48,33 @@ static const unsigned long SLEEP_INTERVAL = 900;
 // --- glitch flicker ---
 static unsigned long lastGlitchTime = 0;
 static const unsigned long GLITCH_INTERVAL = 80;
+
+// --- custom animations: last frame actually on screen, so only changed rows
+// are re-sent over the (slow, software) SPI link ---
+static uint8_t shownFrame[ANIM_MAX_FRAME_BYTES];
+static bool shownFrameValid = false;
+static uint16_t lineBuffer[ANIM_MAX_W];
+
+static void drawAnimFrame(const uint8_t *frame) {
+    const AnimHeader &h = animCurrentHeader();
+    int x0 = (display.width() - h.width) / 2;   // smaller animations are centered
+    int y0 = (display.height() - h.height) / 2;
+
+    display.startWrite();
+    for (uint16_t y = 0; y < h.height; y++) {
+        const uint8_t *row = frame + y * h.rowBytes;
+        if (shownFrameValid && memcmp(row, shownFrame + y * h.rowBytes, h.rowBytes) == 0) continue;
+        for (uint16_t x = 0; x < h.width; x++) {
+            lineBuffer[x] = (row[x >> 3] & (0x80 >> (x & 7))) ? h.color : 0x0000;
+        }
+        display.setAddrWindow(x0, y0 + y, h.width, 1);
+        display.writePixels(lineBuffer, h.width);
+    }
+    display.endWrite();
+
+    memcpy(shownFrame, frame, h.frameBytes);
+    shownFrameValid = true;
+}
 
 static void drawAngryEyes(int offset) {
     display.fillScreen(0x0000);
@@ -190,7 +218,26 @@ FaceState getFace() {
     return currentState;
 }
 
+bool facePlayAnimation(const char *name, bool loop) {
+    if (!animStart(name, loop)) return false;
+    display.fillScreen(0x0000);  // clears the border around smaller animations
+    shownFrameValid = false;
+    return true;
+}
+
+void faceStopAnimation() {
+    if (!animIsPlaying()) return;
+    animStop();
+    resetTimersForState(millis());
+    drawStateFrame(currentState);
+}
+
+bool faceAnimationPlaying() {
+    return animIsPlaying();
+}
+
 void setFace(FaceState newState) {
+    animStop();
     currentState = newState;
     resetTimersForState(millis());
     drawStateFrame(currentState);
@@ -246,6 +293,17 @@ static void updateBlinkAndLook(unsigned long now) {
 }
 
 void faceUpdate(unsigned long now) {
+    if (animIsPlaying()) {
+        const uint8_t *frame;
+        if (animUpdate(now, &frame)) {
+            drawAnimFrame(frame);
+        } else if (!animIsPlaying()) {  // a one-shot animation just finished
+            resetTimersForState(now);
+            drawStateFrame(currentState);
+        }
+        return;
+    }
+
     switch (currentState) {
         case FACE_IDLE:
         case FACE_ANGRY:

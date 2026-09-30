@@ -32,6 +32,15 @@
 #define MINI_ULTRON_ENABLE_IMU 1
 #endif
 
+// Face animations stored on LittleFS ("/anim/<name>.ula", see anim_player.h),
+// on top of the built-in PROGMEM ones that are always available. Uses the
+// default partition table's existing 1.375 MB "spiffs" partition - no
+// partition change needed - but costs app flash for the LittleFS code, so
+// it stays off until there are more animations than PROGMEM should hold.
+#ifndef MINI_ULTRON_ENABLE_ANIM_FS
+#define MINI_ULTRON_ENABLE_ANIM_FS 0
+#endif
+
 // Movement intents from CEREBRO (Django). Opt-in even when the brain link
 // itself is configured (wifi_config.h present): the robot must be verified
 // safe to move before this goes to 1. The Django-side counterpart is

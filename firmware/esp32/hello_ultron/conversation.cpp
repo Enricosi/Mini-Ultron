@@ -15,6 +15,7 @@ static FaceState faceBefore = FACE_IDLE;
 static unsigned long holdUntil = 0;
 static bool wasPlaying = false;
 static unsigned long lastReactedJoltMs = 0;  // dedupes imuGetData().lastJoltMs
+static char pendingAnim[25] = "";  // animation ordered this turn, played once the reply is spoken
 
 // Turn timing (printed once per turn so latency can be attacked later).
 static unsigned long tSpeechEnd = 0, tPlayStart = 0;
@@ -38,6 +39,16 @@ static void applyNeck(const char *name) {
   else if (!strcmp(name, "LEFT")) picoNeckLeft();
   else if (!strcmp(name, "RIGHT")) picoNeckRight();
   // NONE / anything else: leave the neck alone
+}
+
+// CEREBRO sends names like "CALABAZA"; built-in animations are lowercase. "NONE",
+// empty or anything facePlayAnimation() doesn't know is simply not played.
+static void queueAnimation(const char *name) {
+  pendingAnim[0] = '\0';
+  if (!strcmp(name, "NONE")) return;
+  size_t i = 0;
+  for (; name[i] && i < sizeof(pendingAnim) - 1; i++) pendingAnim[i] = tolower((unsigned char)name[i]);
+  pendingAnim[i] = '\0';
 }
 
 static void finishTurn(unsigned long now, FaceState face, unsigned long holdMs) {
@@ -64,6 +75,7 @@ static void onBrainResult(unsigned long now, const BrainResult &r) {
   setFace(face);
   applyNeck(r.neck);
   if (r.ok) motionStart(motionFromName(r.movement));  // a partial/failed turn never moves
+  if (r.ok) queueAnimation(r.animation);
 
   size_t samples = 0;
   const int16_t *pcm = brainReplyPcm(&samples);
@@ -147,7 +159,7 @@ void conversationUpdate(unsigned long now) {
             (unsigned)a.lastUtteranceMs, (unsigned)lastResult.httpMs, (unsigned)lastResult.serverSttMs,
             (unsigned)lastResult.serverLlmMs, (unsigned)lastResult.serverTtsMs,
             (unsigned)lastResult.downloadMs, tPlayStart - tSpeechEnd, now - tPlayStart);
-        holdUntil = now + HOLD_AFTER_SPEECH_MS;
+        holdUntil = now + (pendingAnim[0] ? 0 : HOLD_AFTER_SPEECH_MS);  // dance right away
         state = CV_HOLD;
       }
       break;
@@ -156,6 +168,12 @@ void conversationUpdate(unsigned long now) {
         setFace(faceBefore);
         audioSetDeaf(false);
         state = CV_IDLE;
+        if (pendingAnim[0]) {
+          // Plays once over the idle face; speaking to Ultron (LISTENING) cancels it.
+          bool started = facePlayAnimation(pendingAnim, false);
+          Serial.printf("[conversation] animation %s %s\n", pendingAnim, started ? "started" : "unknown, ignored");
+          pendingAnim[0] = '\0';
+        }
       }
       break;
     default:

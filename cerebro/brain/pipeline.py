@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from . import audio_utils
 from .llm import LLMBackend, LLMError
 from .personalities import DEFAULT_PERSONALITY, Personality
-from .schemas import Behavior, BehaviorError, apply_policy, parse_behavior
+from .schemas import Behavior, BehaviorError, apply_animation_policy, apply_policy, parse_behavior
 from .stt import STTBackend, is_hallucination
 from .tts import Speech, TTSBackend, TTSError
 
@@ -147,7 +147,7 @@ class Pipeline:
         prompt = EVENT_PROMPTS.get(event)
         if prompt is None:
             return self._ignore(turn, "unknown_event", t0)
-        return self._respond(turn, prompt, session, t0)
+        return self._respond(turn, prompt, session, t0, from_speech=False)
 
     # ---- internals ---------------------------------------------------------------
 
@@ -158,7 +158,7 @@ class Pipeline:
         logger.info("turn ignored (%s) stt=%sms", reason, turn.timings_ms.get("stt", "-"))
         return turn
 
-    def _respond(self, turn: Turn, user_text: str, session: str, t0: float) -> Turn:
+    def _respond(self, turn: Turn, user_text: str, session: str, t0: float, from_speech: bool = True) -> Turn:
         messages = [{"role": "system", "content": self.personality.system_prompt}]
         messages += self.history.messages(session)
         messages.append({"role": "user", "content": user_text})
@@ -177,6 +177,10 @@ class Pipeline:
         behavior = apply_policy(behavior, self.allow_movement)
         if behavior.movement != requested_movement:
             turn.warnings.append(f"movement {requested_movement} dropped: movement is disabled")
+        requested_animation = behavior.animation
+        behavior = apply_animation_policy(behavior, user_text if from_speech else None)
+        if behavior.animation != requested_animation:
+            turn.warnings.append(f"animation {requested_animation} dropped: no explicit dance order")
         turn.behavior = behavior
         if "fallback" not in " ".join(turn.warnings):
             self.history.add(session, user_text, behavior)
@@ -192,7 +196,7 @@ class Pipeline:
 
         turn.timings_ms["total"] = _ms(t0)
         logger.info(
-            "turn stt=%sms llm=%sms tts=%sms total=%sms tokens=%s | %r -> [%s/%s/%s] %r",
+            "turn stt=%sms llm=%sms tts=%sms total=%sms tokens=%s | %r -> [%s/%s/%s/%s] %r",
             turn.timings_ms.get("stt", "-"),
             turn.timings_ms["llm"],
             turn.timings_ms["tts"],
@@ -202,6 +206,7 @@ class Pipeline:
             behavior.face,
             behavior.movement,
             behavior.neck,
+            behavior.animation,
             behavior.text[:60],
         )
         return turn

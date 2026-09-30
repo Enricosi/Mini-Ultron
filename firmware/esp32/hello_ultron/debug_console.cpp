@@ -8,6 +8,7 @@
 #include "brain_link.h"
 #include "conversation.h"
 #include "motion.h"
+#include "anim_player.h"
 
 static char buffer[64];
 static uint8_t len = 0;
@@ -24,6 +25,7 @@ static void printHelp() {
         "  BRAIN:STATUS (wifi / CEREBRO link) | MOTION:STOP\n"
         "  IMU:STATUS | IMU:CAL (keep the robot still for ~1 s)\n"
         "  EVENT:JOLT (ask CEREBRO to react as if a jolt was just detected)\n"
+        "  ANIM:LIST | ANIM:PLAY:<name> | ANIM:LOOP:<name> | ANIM:STOP (custom face animations)\n"
         "  ARMS:NEUTRAL|UP|LEFT|RIGHT|WAVE (deferred in v1, see arm_gestures.h)\n"
         "  HELP"));
 }
@@ -156,6 +158,21 @@ static void handleEvent(const String &name) {
     Serial.println(conversationTriggerEvent(name.c_str()) ? "OK" : "ERR:BUSY_OR_BRAIN_DISABLED");
 }
 
+static void handleAnim(const String &action) {
+    if (action == "LIST") {
+        animList(Serial);
+        Serial.println("OK");
+    } else if (action == "STOP") {
+        faceStopAnimation();
+        Serial.println("OK");
+    } else if (action.startsWith("PLAY:") || action.startsWith("LOOP:")) {
+        bool loop = action.startsWith("LOOP:");
+        Serial.println(facePlayAnimation(action.substring(5).c_str(), loop) ? "OK" : "ERR:UNKNOWN_ANIM");
+    } else {
+        Serial.println("ERR:PARSE");
+    }
+}
+
 static void handleArms(const String &action) {
 #if MINI_ULTRON_ENABLE_ARMS
     if (action == "NEUTRAL") handsNeutral();
@@ -226,6 +243,7 @@ static void handleLine(const String &line) {
     if (verb == "MOTION") { handleMotion(rest); return; }
     if (verb == "IMU") { handleImu(rest); return; }
     if (verb == "EVENT") { handleEvent(rest); return; }
+    if (verb == "ANIM") { handleAnim(rest); return; }
     if (verb == "ARMS") { handleArms(rest); return; }
     if (verb == "MOVE" || verb == "ROTATE") { handleMoveOrRotate(verb, rest); return; }
 

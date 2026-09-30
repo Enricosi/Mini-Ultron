@@ -118,6 +118,21 @@ class PipelineTests(SimpleTestCase):
         msgs = llm.calls[0]
         self.assertIn("EVENTO FÍSICO", msgs[-1]["content"])
 
+    def test_dance_order_plays_the_animation(self):
+        llm = FakeLLM([behavior_json(animation="CALABAZA")])
+        turn = make(llm=llm).handle_text("Ultron, baila la calabaza")
+        self.assertEqual(turn.behavior.animation, "CALABAZA")
+
+    def test_llm_cannot_dance_on_its_own(self):
+        llm = FakeLLM([behavior_json(animation="CALABAZA")])
+        turn = make(llm=llm).handle_text("hola ultron")
+        self.assertEqual(turn.behavior.animation, "NONE")
+        self.assertIn("animation CALABAZA dropped: no explicit dance order", turn.warnings)
+
+    def test_events_never_dance(self):
+        llm = FakeLLM([behavior_json(animation="CALABAZA")])
+        self.assertEqual(make(llm=llm).handle_event("JOLT").behavior.animation, "NONE")
+
     def test_unknown_event_is_ignored_without_calling_the_llm(self):
         llm = FakeLLM()
         turn = make(llm=llm).handle_event("NOT_A_REAL_EVENT")

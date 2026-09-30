@@ -36,7 +36,7 @@ class ApiTests(SimpleTestCase):
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertTrue(data["ok"] and not data["ignored"])
-        self.assertEqual(data["behavior"], {"text": "Silencio, humano.", "face": "SUSPICIOUS", "movement": "NONE", "neck": "LEFT"})
+        self.assertEqual(data["behavior"], {"text": "Silencio, humano.", "face": "SUSPICIOUS", "movement": "NONE", "neck": "LEFT", "animation": "NONE"})
         self.assertEqual(data["audio"]["format"], "pcm_s16le_mono")
         self.assertEqual(data["audio"]["sample_rate"], 16000)
         self.assertIn("stt", data["timings_ms"])

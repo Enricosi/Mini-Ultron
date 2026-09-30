@@ -109,6 +109,7 @@ class Command(BaseCommand):
                             "face": behavior.face,
                             "movement": behavior.movement,
                             "neck": behavior.neck,
+                            "animation": behavior.animation,
                             "ms": elapsed_ms,
                             "warnings": warnings,
                             "usage": llm.last_usage,
@@ -136,7 +137,7 @@ class Command(BaseCommand):
         warn = f" warnings={r['warnings']}" if r["warnings"] else ""
         self.stdout.write(
             f"  [{r['case']}] ({r['ms']}ms) tú: {r['user']!r}\n"
-            f"      ultron: {r['text']!r} [{r['face']}/{r['movement']}/{r['neck']}]{warn}"
+            f"      ultron: {r['text']!r} [{r['face']}/{r['movement']}/{r['neck']}/{r['animation']}]{warn}"
         )
 
 

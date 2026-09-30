@@ -164,6 +164,7 @@ static void runRequest() {
   strlcpy(result.face, doc["behavior"]["face"] | "SPEAKING", sizeof(result.face));
   strlcpy(result.movement, doc["behavior"]["movement"] | "NONE", sizeof(result.movement));
   strlcpy(result.neck, doc["behavior"]["neck"] | "NONE", sizeof(result.neck));
+  strlcpy(result.animation, doc["behavior"]["animation"] | "NONE", sizeof(result.animation));
 
   const char *url = doc["audio"]["url"] | (const char *)nullptr;
   if (url) {

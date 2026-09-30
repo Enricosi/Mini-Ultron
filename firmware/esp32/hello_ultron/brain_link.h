@@ -32,6 +32,7 @@ struct BrainResult {
   char face[16];    // exact CEREBRO names, validated by the caller
   char movement[16];
   char neck[8];
+  char animation[25];  // "NONE" or a built-in animation name (anim_library.cpp), any case
   char error[48];
   size_t replySamples;   // valid when hasAudio (16 kHz mono int16 in brainReplyPcm())
   uint32_t httpMs;       // POST round trip (includes server STT+LLM+TTS)

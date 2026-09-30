@@ -3,12 +3,14 @@ import json
 from django.test import SimpleTestCase
 
 from brain.schemas import (
+    ANIMATIONS,
     BEHAVIOR_JSON_SCHEMA,
     FACES,
     MOVEMENTS,
     NECKS,
     Behavior,
     BehaviorError,
+    apply_animation_policy,
     apply_policy,
     extract_json,
     parse_behavior,
@@ -54,7 +56,7 @@ class ParseBehaviorTests(SimpleTestCase):
 
     def test_raw_hardware_values_are_ignored_not_passed_through(self):
         b, _ = parse_behavior(raw(pwm=255, servo_us=1500, speed=100, gpio=13))
-        self.assertEqual(set(b.to_dict()), {"text", "face", "movement", "neck"})
+        self.assertEqual(set(b.to_dict()), {"text", "face", "movement", "neck", "animation"})
 
     def test_text_is_cleaned_and_truncated(self):
         b, _ = parse_behavior(raw(text="**Hola**   `mundo`\n\ncruel"))
@@ -78,6 +80,20 @@ class PolicyTests(SimpleTestCase):
         self.assertEqual((dropped.movement, dropped.face, dropped.neck), ("NONE", "ANGRY", "LEFT"))
         self.assertEqual(apply_policy(b, allow_movement=True).movement, "FORWARD")
 
+    def test_animation_parsed_and_unknown_names_dropped(self):
+        self.assertEqual(parse_behavior(raw(animation="calabaza"))[0].animation, "CALABAZA")
+        b, warnings = parse_behavior(raw(animation="MOONWALK"))
+        self.assertEqual(b.animation, "NONE")
+        self.assertTrue(warnings)
+
+    def test_animation_only_on_an_explicit_dance_order(self):
+        b = Behavior("x", animation="CALABAZA")
+        for order in ("Baila, Ultron", "báilate la calabaza", "ponte a bailar", "una danza, esclavo"):
+            self.assertEqual(apply_animation_policy(b, order).animation, "CALABAZA", order)
+        for other in ("hola ultron", "¿qué planeas hoy?", ""):
+            self.assertEqual(apply_animation_policy(b, other).animation, "NONE", other)
+        self.assertEqual(apply_animation_policy(b, None).animation, "NONE")  # physical events
+
 
 class SchemaVocabularyTests(SimpleTestCase):
     """The schema handed to the LLM must equal the vocabulary the validator accepts."""
@@ -87,5 +103,6 @@ class SchemaVocabularyTests(SimpleTestCase):
         self.assertEqual(props["face"]["enum"], list(FACES))
         self.assertEqual(props["movement"]["enum"], list(MOVEMENTS))
         self.assertEqual(props["neck"]["enum"], list(NECKS))
+        self.assertEqual(props["animation"]["enum"], list(ANIMATIONS))
         self.assertEqual(set(BEHAVIOR_JSON_SCHEMA["required"]), set(props))
         self.assertFalse(BEHAVIOR_JSON_SCHEMA["additionalProperties"])
