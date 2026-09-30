@@ -8,7 +8,33 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-25. **Today (2026-09-25):** Two features, at Enrico's explicit
+Last reviewed: 2026-09-29. **Today (2026-09-29):** custom face animations, at Enrico's
+request — GIF/MP4 → 1-bit `.ula` frames offline (`tools/anim/anim_convert.py`), played on
+the **existing SSD1331 96x64** (Enrico chose it over a new 128x64 I2C OLED; no pins or
+wiring changed). Built-in (PROGMEM) animations always available; LittleFS storage
+implemented but gated off (`MINI_ULTRON_ENABLE_ANIM_FS 0`). **UPLOADED and PHYSICALLY
+TESTED:** built-in `calabaza` (Enrico's green-screen "La calabaza" cats MP4 → converter
+`--crop --chroma-key --silhouette --outline`, 113 frames @ 8 fps, 87 KB) plays and loops on the
+face; Enrico preferred outline over filled silhouettes. Converter gained `--crop`,
+`--chroma-key`, `--silhouette`, `--outline`. App flash now 92-93%.
+**⚠ The board currently runs a NON-DEFAULT build: `-DMINI_ULTRON_ENABLE_IMU=0`** (and brain
+movement 0 — the source default; the 2026-09-21 movement-ON build was replaced). Reason: this
+was the first upload of the 2026-09-25 jolt reaction, and it **fires by itself every 1-3 s
+with the robot still** (IMU crosstalk: 8 "jolts" in seconds, 372/1612 reads failed), each one
+setting THINKING (which cancels any animation) and POSTing `/api/event`, which the home-lab
+answers **404 — the Django side of 2026-09-25 is not deployed**. Server still reports
+`movement_allowed=1`.
+**Dance on command (same day, Enrico: "solo quiero que baile cuando se lo ordene"):** new
+`animation` intent field (`NONE|CALABAZA`, `schemas.ANIMATIONS`), double-gated: the LLM must pick
+it (prompt: only on an explicit order, never on its own or on an event) AND
+`apply_animation_policy()` keeps it only if the user's own transcript matches
+`DANCE_ORDER_RE` (`bail…`, `danz…`, `calabaza`) — events can never dance. 71 Django tests pass
+(5 new). ESP32: `BrainResult.animation` → `conversation.cpp` queues it and plays it once right
+after the reply is spoken (hold skipped); speaking to Ultron cancels it. Firmware **UPLOADED**
+(IMU=0 build). **Django NOT deployed** — the deploy was blocked by the session's permission
+policy, so the server still runs the pre-2026-09-25 code (no `animation`, no `/api/event`);
+old server + new firmware is compatible (missing field = no dance).
+**Previously (2026-09-25):** Two features, at Enrico's explicit
 request (both firmware-compiled and Django-tested, **not uploaded to hardware** — that's
 Enrico's step). (1) **Ultron now reacts out loud when moved/picked up.** New shared
 CEREBRO "event" path: `conversation.cpp` watches `imuGetData().lastJoltMs` and, only
@@ -648,6 +674,26 @@ gone, flipping `MINI_ULTRON_ENABLE_ARMS` back to `1` would compile but has nothi
 to drive. `waveRightHand()` still uses blocking `delay(250)` x4, unchanged — not a
 concern since this path is historical/inactive, not on the active v1 loop.
 
+### `anim_player.{h,cpp}`, `anim_library.{h,cpp}`, `anim_format.h` — custom face animations (new 2026-09-29)
+
+**IMPLEMENTED, COMPILES, NOT UPLOADED.** Offline converter `tools/anim/anim_convert.py`
+(Pillow; ffmpeg for video) turns a GIF/MP4 into a `.ula` blob: 16-byte header, per-frame
+delays, then 1-bit frames (96x64 = 768 B each, identical consecutive frames merged). The same
+bytes are used as a PROGMEM header (`src/animations/anim_<name>.h`, registered by one line in
+`anim_library.cpp`) or a LittleFS file (`/anim/<name>.ula`), so the firmware has one parser.
+`anim_player` validates the header/size, streams **one frame at a time** into a 768 B buffer
+(never the whole animation) and times frames non-blocking; `face.cpp` stays the only owner of
+the display and re-sends only the rows that changed (`setAddrWindow` + `writePixels` per row).
+Any `setFace()` cancels a running animation (conversation wins); a one-shot animation ends by
+redrawing the current state. Console: `ANIM:LIST|PLAY:<name>|LOOP:<name>|STOP`. One demo
+built-in: `scan` (red eye sweeping, 16 frames, 12 KB).
+- LittleFS uses the default table's existing `spiffs` partition (0x290000, 1.375 MB) — no
+  partition change; mounted with `formatOnFail=false` so it never wipes anything. Image build
+  (`mklittlefs`) verified on the laptop; flashing it has not been done. Steps in `tools/anim/README.md`.
+- Flash cost (measured): baseline 1120015 → 1134143 bytes (86%) with PROGMEM only (12 KB of it is
+  the demo); 1173559 (89%) with `MINI_ULTRON_ENABLE_ANIM_FS=1`. RAM +~1.8 KB.
+- Physically tested 2026-09-29 with `calabaza` (see top summary). `scan` demo not looked at.
+
 ### `debug_console.{h,cpp}` — development console (Task 9, new this session)
 
 Replaces the old single-character serial commands with a full ASCII line protocol
@@ -1026,6 +1072,28 @@ No existing safety behavior was weakened.
   subsystem (not yet measured — do not connect until verified).
 
 ## Immediate next step
+
+**NEXT SESSION — start here (written 2026-09-29):**
+0. **Deploy Django** (Enrico runs it, or grants permission): `rsync -a --delete --exclude var/
+   --exclude .env --exclude __pycache__/ cerebro/ <user>@<server>:~/mini-ultron/cerebro/`
+   then `ssh <user>@<server> 'systemctl --user restart cerebro'`. Dry run showed exactly
+   the 2026-09-25 + 2026-09-29 changes (incl. deleting the old `brain/personality.py`). Verify
+   `/api/health` shows `"personality": "ultron"`.
+   Then **say "Ultron, baila la calabaza"** → he should answer in character, then dance once;
+   and say something unrelated → must NOT dance. Check the server log line
+   (`[face/movement/neck/animation]`) and `animation ... dropped` warnings.
+1. **False jolts** — the jolt reaction must not ship as-is: needs a crosstalk fix (wiring, or
+   a firmware filter, e.g. ignore reads flagged failed / require N consecutive) before the IMU
+   build goes back on. Until then the board runs `MINI_ULTRON_ENABLE_IMU=0` (see top summary).
+2. **Deploy Django to the home-lab** (`/api/event` 404) and run `eval_personality` — the
+   2026-09-25 items below.
+3. ~~Voice-triggered animations~~ — implemented 2026-09-29, pending item 0's deploy + test.
+   Adding another dance later: convert → register in `anim_library.cpp` → add its UPPERCASE
+   name to `schemas.ANIMATIONS` → mention it in `personalities/ultron.py`.
+4. Brain movement is OFF on the board now; re-flash with `-DMINI_ULTRON_BRAIN_MOVEMENT=1` only
+   if Enrico wants it back.
+5. Flash is 92-93%: more/longer animations → LittleFS (`MINI_ULTRON_ENABLE_ANIM_FS`) or frame
+   compression, not more PROGMEM.
 
 **As of 2026-09-25 (current), not yet on hardware — this is the first thing to do next
 session:** upload today's `hello_ultron` build and physically verify the jolt reaction
