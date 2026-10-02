@@ -15,8 +15,10 @@ are stubs, no jolts ever fire, GPIO13/14 free); new **Pico `features.h`** with
 `MINI_ULTRON_ENABLE_ULTRASONIC 0` — GP4/GP5 never configured, `STATUS` reports `DIST:-1.0`,
 and **`MOVE:FWD` has no obstacle veto** (remaining guards: speed clamp, 500 ms watchdog, STOP
 priority, the ESP32's fixed slow ~0.8 s bursts). Both firmwares **COMPILE** (Pico also with
-`-DMINI_ULTRON_ENABLE_ULTRASONIC=1`); **not uploaded** — the ESP32 already runs an IMU=0 build,
-so only the Pico needs re-flashing. Django's `/api/event` + `JOLT` prompt left in place (unused,
+`-DMINI_ULTRON_ENABLE_ULTRASONIC=1`); **both UPLOADED 2026-10-02** with source defaults (IMU 0,
+ultrasonic 0, brain movement 0). Checked over serial, no movement: Pico `STATUS` → `DIST:-1.0`
+`LINE:111`, `PING` → `OK`; ESP32 boots, hears speech, `IMU:STATUS` → stub (`OK=0 JOLTS=0`),
+`PICO:LAST` → `ALIVE=1 DIST=-1.00` over UART. `MOVE:FWD` without the veto not yet tried. Django's `/api/event` + `JOLT` prompt left in place (unused,
 harmless). Physically unplugging the MPU6050 / HC-SR04 is Enrico's step.
 **Previously (2026-09-29):** custom face animations, at Enrico's
 request — GIF/MP4 → 1-bit `.ula` frames offline (`tools/anim/anim_convert.py`), played on
@@ -1093,8 +1095,9 @@ No existing safety behavior was weakened.
    path and unit tests say so).
 1. ~~False jolts~~ — **moot 2026-10-02**: the IMU was dropped from v1 (`MINI_ULTRON_ENABLE_IMU
    0` is now the source default). If a future build brings it back, the crosstalk fix (wiring
-   or a firmware filter) is still needed first. **New:** re-flash the Pico with the
-   ultrasonic-off build (`features.h`) and check `STATUS` → `DIST:-1.0`, `MOVE:FWD` → `OK`.
+   or a firmware filter) is still needed first. Both boards re-flashed with the IMU/ultrasonic-off
+   defaults 2026-10-02 and checked (see top summary); only `MOVE:FWD` → `OK` (wheels in the air)
+   is left to try.
 2. Run `eval_personality` (the 2026-09-25 prompt changes + today's `animation` rule, against
    real Groq). `/api/event` is deployed now, but stays unused while the IMU build is off.
 3. ~~Voice-triggered animations~~ — done and verified by voice 2026-09-29.
