@@ -73,8 +73,9 @@ PING
 ```
 OK                  command accepted (and executed, if it involved motion)
 ERR:PARSE           line didn't match any known command shape
-OBSTACLE            MOVE:FWD refused - ultrasonic sees something too close
-DIST:<cm>           part of the STATUS reply
+OBSTACLE            MOVE:FWD refused - ultrasonic sees something too close (never sent
+                    when no ultrasonic is installed - the v1 default)
+DIST:<cm>           part of the STATUS reply; DIST:-1.0 = no ultrasonic installed
 LINE:<3 bits>       part of the STATUS reply, e.g. LINE:010 (L,C,R)
 STOPPED:TIMEOUT     the communication watchdog fired (no command for >500ms while moving)
 READY               printed once at boot
@@ -108,7 +109,7 @@ MOVE:FWD:<0-100> | MOVE:BACK:<0-100> | MOVE:LEFT:<0-100> | MOVE:RIGHT:<0-100>
 ROTATE:L:<0-100> | ROTATE:R:<0-100>
 AUDIO:STATUS | AUDIO:BEEP | AUDIO:REPLAY
 BRAIN:STATUS | MOTION:STOP
-IMU:STATUS | IMU:CAL
+IMU:STATUS | IMU:CAL             (IMU off by default since 2026-10-02: stub values)
 ARMS:NEUTRAL|UP|LEFT|RIGHT|WAVE   (ERR:ARMS_DISABLED — deferred hardware)
 HELP
 ```

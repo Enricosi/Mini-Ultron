@@ -19,7 +19,8 @@ ESP32 (motion.cpp)             →  turns intent into a fixed, slow, time-bounde
                                    compiled out entirely unless MINI_ULTRON_BRAIN_MOVEMENT
                                    is defined; aborts on OBSTACLE/STOPPED_TIMEOUT from
                                    the Pico, or when the user starts speaking
-Pico (safety_controller.cpp)   →  final authority: watchdog timeout, obstacle veto,
+Pico (safety_controller.cpp)   →  final authority: watchdog timeout, obstacle veto (only
+                                   if an ultrasonic is installed - not in v1),
                                    STOP always wins, regardless of who or what asked
                                    for movement
 ```
@@ -27,7 +28,8 @@ Pico (safety_controller.cpp)   →  final authority: watchdog timeout, obstacle 
 Two independent opt-ins gate brain-driven movement at all (Django's
 `ULTRON_ALLOW_MOVEMENT` and the ESP32's `MINI_ULTRON_BRAIN_MOVEMENT` compile flag),
 both off by default. Both must be deliberately turned on for the LLM to move the
-robot at all, and the Pico's watchdog/obstacle veto still apply regardless.
+robot at all, and the Pico's watchdog (and obstacle veto, if installed) still apply
+regardless.
 
 ## Boot safety
 
@@ -81,6 +83,12 @@ robot at all, and the Pico's watchdog/obstacle veto still apply regardless.
   failed LLM call in the first place, since `Behavior` defaults `movement` to `NONE`.
 
 ## Obstacle veto
+
+**Not in the v1 build (since 2026-10-02).** The ultrasonic is an optional module on the
+Pico (`features.h`, `MINI_ULTRON_ENABLE_ULTRASONIC 0` by default). With it off, nothing
+vetoes `MOVE:FWD` — forward motion relies only on the speed clamp, the 500 ms watchdog,
+STOP priority, and the ESP32's fixed slow ~0.8 s bursts; nothing stops the robot before
+a wall. Everything below applies only to a build with the sensor installed.
 
 - `safetyForwardBlocked(distanceCm)` on the Pico gates `MOVE:FWD` specifically
   (returns `OBSTACLE` instead of moving) using the HC-SR04 ultrasonic sensor

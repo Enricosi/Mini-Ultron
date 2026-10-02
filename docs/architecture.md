@@ -16,7 +16,8 @@ ESP32-S3            (upper body: face, voice, network, ESP32<->Pico bridge)
         v
 Raspberry Pi Pico W (lower body: locomotion + neck + sensors + local safety)
         v
-Freenove car shield / 4 DC motors / neck servo / ultrasonic / line tracker / WS2812
+Freenove car shield / 4 DC motors / neck servo / line tracker / WS2812
+(ultrasonic: optional module, not in v1)
 ```
 
 Each arrow narrows what can be expressed: the LLM can ask for `movement: FORWARD`,
