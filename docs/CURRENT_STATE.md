@@ -29,7 +29,7 @@ TESTED:** built-in `calabaza` (Enrico's green-screen "La calabaza" cats MP4 → 
 `--crop --chroma-key --silhouette --outline`, 113 frames @ 8 fps, 87 KB) plays and loops on the
 face; Enrico preferred outline over filled silhouettes. Converter gained `--crop`,
 `--chroma-key`, `--silhouette`, `--outline`. App flash now 92-93%.
-**⚠ The board currently runs a NON-DEFAULT build: `-DMINI_ULTRON_ENABLE_IMU=0`** (and brain
+**(History — since 2026-10-02 IMU=0 IS the source default, see above.)** ~~The board currently runs a NON-DEFAULT build: `-DMINI_ULTRON_ENABLE_IMU=0`~~ (and brain
 movement 0 — the source default; the 2026-09-21 movement-ON build was replaced). Reason: this
 was the first upload of the 2026-09-25 jolt reaction, and it **fires by itself every 1-3 s
 with the robot still** (IMU crosstalk: 8 "jolts" in seconds, 372/1612 reads failed), each one
@@ -201,10 +201,10 @@ time. Enrico decided next session continues on hardware (INMP441/audio/MPU6050
 wiring), not Django/LLM yet — see "Immediate next step").
 
 v1 hardware scope is now decided. **ACTIVE in v1**: SSD1331 OLED, INMP441 I2S mic,
-Freenove Audio Converter & Amplifier + 8Ω 2W speaker, MPU6050 (firm inclusion, no
-longer optional), UART to the Pico W, neck servo (on the Pico/car shield),
-ultrasonic sensor, Mecanum drivetrain. **REMOVED/DEFERRED from v1**: PCA9685, arm
-servos, camera.
+Freenove Audio Converter & Amplifier + 8Ω 2W speaker, UART to the Pico W, neck servo
+(on the Pico/car shield), Mecanum drivetrain. **REMOVED/DEFERRED from v1**: PCA9685, arm
+servos, camera, and (since 2026-10-02) **MPU6050 and ultrasonic** — code kept as
+off-by-default modules (ESP32/Pico `features.h`).
 
 ## Hardware that physically exists
 
@@ -221,7 +221,8 @@ servos, camera.
   working, now out of the system entirely, not just software-deferred.
 - Freenove FNK0089 4WD Mecanum car kit: Raspberry Pi Pico W, car shield, 4 DC motors,
   4 Mecanum wheels, front/neck servo mechanism (wired to the shield's own servo
-  header, confirmed by Enrico), HC-SR04 ultrasonic sensor, 3-channel line tracker,
+  header, confirmed by Enrico), HC-SR04 ultrasonic sensor (**dropped from v1 2026-10-02**, being
+  physically removed by Enrico), 3-channel line tracker,
   2x18650 battery holder. Mechanically assembled.
 - 2x 18650 cells: **NOW AVAILABLE as of 2026-09-13.** Car has run under its own
   battery power for the first time this session — see "Pico W firmware status" for
@@ -234,9 +235,8 @@ servos, camera.
   never be wired directly to an ESP32 GPIO.
 - Freenove ESP32-S3 camera module: previously test-attached via flex cable.
   REMOVED/DEFERRED from v1 — do not mechanically stress the flex cable.
-- MPU6050: available from kit, not integrated. **ACTIVE in v1, firm inclusion (no
-  longer optional)** — but its ESP32 I2C pins are not chosen yet; do not assign them
-  ahead of need.
+- MPU6050: **dropped from v1 2026-10-02** (I2S crosstalk → false jolts), being physically
+  removed by Enrico. `imu.{h,cpp}` kept, off by default (`MINI_ULTRON_ENABLE_IMU 0`).
 - Bench servo power supply: 5V/5A external supply, used historically for PCA9685 arm
   testing (PCA9685/arms since physically removed — see above).
 
@@ -629,7 +629,7 @@ rooms/TV/music (energy detection can't tell voice from noise — plan: second-st
 the Django side before STT). The audio task's stack/timing under heavy face/UART load is
 only lightly exercised. Resources: 51% RAM (169760 B), 29% flash.
 
-### `imu.{h,cpp}` — MPU6050-family IMU, records shocks only (new 2026-09-18)
+### `imu.{h,cpp}` — MPU6050-family IMU, records shocks only (new 2026-09-18) — OFF by default since 2026-10-02, not in v1
 
 Non-blocking `millis()` module on I2C (SDA=GPIO13, SCL=GPIO14, default 100 kHz):
 `imuInit()`, `imuUpdate(now)` (samples every 10 ms), `imuGetData()` (accel g, gyro dps,
@@ -829,8 +829,8 @@ work (I2S, HTTP) lives in the audio and brain FreeRTOS tasks.
 | GPIO12 | Amp DIN (I2S data out) | **VERIFIED, integrated in production** — same correction as GPIO9 above; `audio_out_test` was only the original bench sketch |
 | — | Amp SCK/MCLK | NOT CONNECTED — matches Freenove's official ESP32-S3 example (only BCLK/LRC/DOUT configured). GPIO16 is free, not reserved |
 | — | Amp VCC->5V, GND->common GND, speaker->L+/L- | WIRED 2026-09-18, in production use |
-| GPIO13 | MPU6050 I2C SDA | **VERIFIED, integrated** — wired 2026-09-18, integrated into `imu.{h,cpp}`/`imuInit()` (called from `hello_ultron.ino`). Data itself is degraded by I2S crosstalk while audio runs — see "`imu.{h,cpp}`" section below, treat `joltCount`/roll/pitch as unreliable until that's fixed. Corrected 2026-09-24: this row previously said "not yet physically tested," stale. |
-| GPIO14 | MPU6050 I2C SCL | **VERIFIED, integrated** — same correction as GPIO13 above |
+| GPIO13 | ~~MPU6050 I2C SDA~~ **FREE since 2026-10-02** (IMU dropped from v1; only used if a build sets `MINI_ULTRON_ENABLE_IMU 1`) | History: **VERIFIED, integrated** — wired 2026-09-18, integrated into `imu.{h,cpp}`/`imuInit()` (called from `hello_ultron.ino`). Data itself is degraded by I2S crosstalk while audio runs — see "`imu.{h,cpp}`" section below, treat `joltCount`/roll/pitch as unreliable until that's fixed. Corrected 2026-09-24: this row previously said "not yet physically tested," stale. |
+| GPIO14 | ~~MPU6050 I2C SCL~~ **FREE since 2026-10-02** (same as GPIO13) | History: **VERIFIED, integrated** — same correction as GPIO13 above |
 
 Constructor in use (software SPI, matches wiring above, unchanged):
 ```cpp
@@ -1018,7 +1018,8 @@ Verified in software (by reading the code, not by physical test):
   `constrain(..., 0, MOTOR_SPEED_MAX)` on the Pico side, unchanged) is enforced at
   both layers independently.
 - Ultrasonic forward-veto (`safetyForwardBlocked`) is unchanged and still only gates
-  `MOVE:FWD`.
+  `MOVE:FWD`. **Since 2026-10-02 it is compiled out by default** (`MINI_ULTRON_ENABLE_ULTRASONIC
+  0`, no sensor in v1): forward motion has no obstacle veto at all.
 - `STOP` is still checked first in `command_parser.cpp`'s `handleLine()`, ahead of
   the generic verb dispatch — unaffected by the `NECK` insertion.
 - Neck positions are restricted to the `NeckPosition` enum end-to-end: the wire
@@ -1087,26 +1088,29 @@ No existing safety behavior was weakened.
 
 ## Immediate next step
 
-**NEXT SESSION — start here (written 2026-09-29):**
-0. ~~Deploy Django + dance-by-voice test~~ — **done and passed 2026-09-29.** Deploy =
-   `rsync -a --delete --exclude var/ --exclude .env --exclude __pycache__/ cerebro/
-   <user>@<server>:~/mini-ultron/cerebro/` + `ssh <user>@<server> 'systemctl --user
-   restart cerebro'`. Not yet checked: that an unrelated phrase by voice doesn't dance (the text
-   path and unit tests say so).
-1. ~~False jolts~~ — **moot 2026-10-02**: the IMU was dropped from v1 (`MINI_ULTRON_ENABLE_IMU
-   0` is now the source default). If a future build brings it back, the crosstalk fix (wiring
-   or a firmware filter) is still needed first. Both boards re-flashed with the IMU/ultrasonic-off
-   defaults 2026-10-02 and checked (see top summary); only `MOVE:FWD` → `OK` (wheels in the air)
-   is left to try.
-2. Run `eval_personality` (the 2026-09-25 prompt changes + today's `animation` rule, against
-   real Groq). `/api/event` is deployed now, but stays unused while the IMU build is off.
-3. ~~Voice-triggered animations~~ — done and verified by voice 2026-09-29.
-   Adding another dance later: convert → register in `anim_library.cpp` → add its UPPERCASE
-   name to `schemas.ANIMATIONS` → mention it in `personalities/ultron.py`.
-4. Brain movement is OFF on the board now; re-flash with `-DMINI_ULTRON_BRAIN_MOVEMENT=1` only
-   if Enrico wants it back.
-5. Flash is 92-93%: more/longer animations → LittleFS (`MINI_ULTRON_ENABLE_ANIM_FS`) or frame
-   compression, not more PROGMEM.
+**NEXT SESSION — start here (written 2026-10-02):**
+State: both boards run the source-default build (IMU 0, ultrasonic 0, brain movement 0), checked
+over serial 2026-10-02. Django deployed 2026-09-29, unchanged since. Deploy =
+`rsync -a --delete --exclude var/ --exclude .env --exclude __pycache__/ cerebro/
+<user>@<server>:~/mini-ultron/cerebro/` + `ssh <user>@<server> 'systemctl --user
+restart cerebro'`.
+1. **Run `eval_personality`** against real Groq (the 2026-09-25 prompt changes + the 2026-09-29
+   `animation` rule have never been re-evaluated). Pure software, no hardware needed.
+2. **Voice check: an unrelated phrase must NOT dance** (text path + unit tests say so; never tried
+   by voice).
+3. **`MOVE:FWD` without the obstacle veto** → expect `OK`, wheels in the air, only with Enrico's go
+   (moves the wheels).
+4. Enrico physically removes the MPU6050 and HC-SR04 (if not done yet) — firmware no longer
+   touches GPIO13/14 (ESP32) or GP4/GP5 (Pico).
+5. Optional/later: brain movement stays OFF (re-flash with `-DMINI_ULTRON_BRAIN_MOVEMENT=1` only if
+   Enrico asks; with no ultrasonic, the floor test needs extra care). Flash is 92-93%: more
+   animations → LittleFS (`MINI_ULTRON_ENABLE_ANIM_FS`) or compression. Adding a dance: convert →
+   register in `anim_library.cpp` → add its UPPERCASE name to `schemas.ANIMATIONS` → mention it in
+   `personalities/ultron.py`. Still open from before: floor test, Piper GPL legal review, 5V-rail
+   measurement.
+
+**As of 2026-09-29 — SUPERSEDED by the 2026-10-02 list above:** dance-by-voice done and passed;
+false jolts (item 1 then) made moot by dropping the IMU.
 
 **As of 2026-09-25 — SUPERSEDED by the 2026-09-29 list above** (the build was uploaded;
 `EVENT:JOLT`'s real-world counterpart fires falsely, see item 1). Original text: upload today's `hello_ultron` build and physically verify the jolt reaction
@@ -1183,7 +1187,7 @@ conversation/insults/"detente"->NONE.
   that echo most of that prompt (short real commands like "Avanza" are never dropped; unit-tested). After it,
   Enrico reported the commands work; a systematic measurement of misheard commands was not made.
 - **Not done yet: the floor test.** Preconditions Enrico must confirm each time: robot on the floor with
-  >= 1 m free (there is NO cliff/edge sensor; the ultrasonic only vetoes forward), ESP32 power that
+  >= 1 m free (there is NO cliff/edge sensor, and since 2026-10-02 NO ultrasonic either — nothing stops it before a wall), ESP32 power that
   doesn't depend on the laptop (or a long USB cable), Enrico beside it with a hand near the Pico's battery
   switch. Emergency stops: the Pico's battery switch, `MOTION:STOP` over serial, or unplugging the ESP32
   (the Pico's watchdog stops the car ~0.5 s after the last command). Enrico asked to be warned before any
@@ -1199,8 +1203,7 @@ Open items, in rough priority:
    appeared once in the session output when a build failed (local only; changing the Wi-Fi password is
    optional). `/tmp` voice samples are throwaway.
 3. **Power for the ESP32 + amp on the cart** (Enrico says it's nearly solved; not measured/verified here).
-4. **IMU data is unreliable while audio runs** (I2S clocks corrupt the I2C reads; see its section) —
-   nothing safety-relevant uses it.
+4. ~~IMU data is unreliable while audio runs~~ — moot 2026-10-02, IMU dropped from v1.
 5. **Latency and quality tuning:** speech-end-to-playback is ~1.7-3.1 s (longer for long utterances);
    an occasional slow Groq call (2-6 s, unexplained; token counts are logged); Groq's plan caps at
    8000 tokens/minute per model and the personality prompt is ~1300 tokens/turn (fallback 120b->20b exists).
