@@ -25,11 +25,11 @@
 #endif
 
 // MPU6050-family IMU: jolt detection (see conversation.cpp) and roll/pitch.
-// On by default - v1 firm inclusion. Set to 0 for a build with no IMU wired
-// (frees GPIO13/14); imu.{h,cpp} then compiles to harmless stubs, no other
-// file needs to change.
+// Not part of the v1 build (removed 2026-10-02: the I2S audio clocks corrupted
+// its I2C reads and caused false jolts). Off = imu.{h,cpp} compile to harmless
+// stubs and GPIO13/14 are free; set to 1 for a build that has one wired cleanly.
 #ifndef MINI_ULTRON_ENABLE_IMU
-#define MINI_ULTRON_ENABLE_IMU 1
+#define MINI_ULTRON_ENABLE_IMU 0
 #endif
 
 // Face animations stored on LittleFS ("/anim/<name>.ula", see anim_player.h),

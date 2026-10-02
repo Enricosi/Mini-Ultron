@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "command_parser.h"
+#include "features.h"
 #include "motor_controller.h"
 #include "safety_controller.h"
 #include "sensors.h"
@@ -95,11 +96,13 @@ static void handleLine(const String &line, Stream &port) {
     }
     safetyNoteCommandReceived();
     if (dir == "FWD") {
+#if MINI_ULTRON_ENABLE_ULTRASONIC
       float distanceCm = sensorsReadDistanceCm();
       if (safetyForwardBlocked(distanceCm)) {
         port.println("OBSTACLE");
         return;
       }
+#endif
       moveForward(speed);
     } else if (dir == "BACK") {
       moveBackward(speed);

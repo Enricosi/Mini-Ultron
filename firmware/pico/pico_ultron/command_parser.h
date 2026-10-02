@@ -18,7 +18,8 @@
     OK                 command accepted (and executed, if it involved motion)
     ERR:PARSE          line didn't match any known command shape
     OBSTACLE           MOVE:FWD refused - ultrasonic sees something too close
-    DIST:<cm>          part of the STATUS reply
+                       (never sent when the ultrasonic isn't installed, features.h)
+    DIST:<cm>          part of the STATUS reply; DIST:-1.0 = no ultrasonic installed
     LINE:<3 bits>       part of the STATUS reply, e.g. LINE:010 (L,C,R)
 **********************************************************************/
 #ifndef COMMAND_PARSER_H

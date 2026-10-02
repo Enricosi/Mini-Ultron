@@ -19,7 +19,7 @@
 
 // Let CEREBRO's abstract movement intents (FORWARD, ROTATE_LEFT, ...) actually drive
 // the robot. OFF by default. Even when on: fixed slow speed, ~0.8 s bursts, the Pico
-// keeps its watchdog / obstacle veto / STOP authority, and CEREBRO must also allow it
+// keeps its watchdog / STOP authority (plus the obstacle veto, if an ultrasonic is installed), and CEREBRO must also allow it
 // (ULTRON_ALLOW_MOVEMENT=1 on the server). Only enable with the robot safely on the floor.
 // #define MINI_ULTRON_BRAIN_MOVEMENT 1
 

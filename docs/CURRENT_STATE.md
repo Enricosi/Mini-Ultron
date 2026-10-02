@@ -8,7 +8,17 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-09-29. **Today (2026-09-29):** custom face animations, at Enrico's
+Last reviewed: 2026-10-02. **Today (2026-10-02): IMU and ultrasonic dropped from v1** (Enrico:
+the IMU "da demasiados problemas"; the ultrasonic won't be on the first units either). Code
+kept, both off by default: ESP32 `features.h` `MINI_ULTRON_ENABLE_IMU` now **0** (imu.{h,cpp}
+are stubs, no jolts ever fire, GPIO13/14 free); new **Pico `features.h`** with
+`MINI_ULTRON_ENABLE_ULTRASONIC 0` — GP4/GP5 never configured, `STATUS` reports `DIST:-1.0`,
+and **`MOVE:FWD` has no obstacle veto** (remaining guards: speed clamp, 500 ms watchdog, STOP
+priority, the ESP32's fixed slow ~0.8 s bursts). Both firmwares **COMPILE** (Pico also with
+`-DMINI_ULTRON_ENABLE_ULTRASONIC=1`); **not uploaded** — the ESP32 already runs an IMU=0 build,
+so only the Pico needs re-flashing. Django's `/api/event` + `JOLT` prompt left in place (unused,
+harmless). Physically unplugging the MPU6050 / HC-SR04 is Enrico's step.
+**Previously (2026-09-29):** custom face animations, at Enrico's
 request — GIF/MP4 → 1-bit `.ula` frames offline (`tools/anim/anim_convert.py`), played on
 the **existing SSD1331 96x64** (Enrico chose it over a new 128x64 I2C OLED; no pins or
 wiring changed). Built-in (PROGMEM) animations always available; LittleFS storage
@@ -1081,9 +1091,10 @@ No existing safety behavior was weakened.
    <user>@<server>:~/mini-ultron/cerebro/` + `ssh <user>@<server> 'systemctl --user
    restart cerebro'`. Not yet checked: that an unrelated phrase by voice doesn't dance (the text
    path and unit tests say so).
-1. **False jolts** — the jolt reaction must not ship as-is: needs a crosstalk fix (wiring, or
-   a firmware filter, e.g. ignore reads flagged failed / require N consecutive) before the IMU
-   build goes back on. Until then the board runs `MINI_ULTRON_ENABLE_IMU=0` (see top summary).
+1. ~~False jolts~~ — **moot 2026-10-02**: the IMU was dropped from v1 (`MINI_ULTRON_ENABLE_IMU
+   0` is now the source default). If a future build brings it back, the crosstalk fix (wiring
+   or a firmware filter) is still needed first. **New:** re-flash the Pico with the
+   ultrasonic-off build (`features.h`) and check `STATUS` → `DIST:-1.0`, `MOVE:FWD` → `OK`.
 2. Run `eval_personality` (the 2026-09-25 prompt changes + today's `animation` rule, against
    real Groq). `/api/event` is deployed now, but stays unused while the IMU build is off.
 3. ~~Voice-triggered animations~~ — done and verified by voice 2026-09-29.

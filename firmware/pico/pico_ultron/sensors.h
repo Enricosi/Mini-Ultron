@@ -3,6 +3,8 @@
 
 void sensorsInit();
 
+#define SENSORS_NO_DISTANCE -1.0f  // returned when the ultrasonic isn't installed (features.h)
+
 float sensorsReadDistanceCm();     // wraps chassisReadDistanceCm()
 void sensorsReadLine(char out[4]); // fills out[0..2] with '0'/'1' (L,C,R), out[3] = '\0'
 

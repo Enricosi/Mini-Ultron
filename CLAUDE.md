@@ -70,8 +70,10 @@ while moving must always resolve to STOP, never to continued motion.
 - Speed is always constrained to a validated range before reaching the motor driver.
 - Loss of communication while moving must auto-STOP (watchdog timeout).
 - STOP always takes priority over any queued or in-flight movement command.
-- The ultrasonic sensor can veto an unsafe forward command regardless of what
-  requested it.
+- When an ultrasonic sensor is installed (Pico `features.h`), it can veto an unsafe
+  forward command regardless of what requested it. The v1 build has none, so forward
+  motion relies on the speed clamp, the watchdog, STOP priority, and the firmware's
+  fixed slow time-bounded bursts — don't lengthen or speed up those bursts to compensate.
 - No autonomous behavior may cause harm; no uncontrolled movement after comms loss.
 - Movement intents from the brain are opt-in at two independent levels (Django
   `ULTRON_ALLOW_MOVEMENT`, firmware `MINI_ULTRON_BRAIN_MOVEMENT`), both off by default. The
@@ -136,10 +138,15 @@ while moving must always resolve to STOP, never to continued motion.
   reference — kept compiled-out (`MINI_ULTRON_ENABLE_ARMS 0`) rather than deleted —
   but treat it as deferred/historical, not active v1 functionality.
 - v1 hardware scope is decided: SSD1331 OLED, INMP441 mic, Freenove audio
-  converter/amplifier + 8Ω 2W speaker, MPU6050, UART to the Pico, neck servo (on the
-  Pico), ultrasonic, Mecanum drivetrain. MPU6050 is a firm v1 inclusion, not
-  optional — but its ESP32 GPIO pins are not chosen yet, so don't assign them ahead
-  of need (same rule as the other unwired subsystems above).
+  converter/amplifier + 8Ω 2W speaker, UART to the Pico, neck servo (on the Pico),
+  Mecanum drivetrain. **The MPU6050 and the ultrasonic were dropped from v1
+  (2026-10-02)** — the IMU's I2C was corrupted by the I2S audio clocks and produced
+  false jolts. Both stay in the tree as optional, off-by-default modules
+  (`MINI_ULTRON_ENABLE_IMU` on the ESP32, `MINI_ULTRON_ENABLE_ULTRASONIC` on the Pico),
+  so a build that has them can turn them back on; nothing else may depend on them.
+- Optional hardware is modular per build: each controller has one `features.h` listing
+  its optional subsystems' compile flags. New optional hardware gets a flag there with
+  a harmless "not installed" behavior, not scattered inline `#define`s.
 - The Freenove audio amplifier board is powered separately via its own VCC/GND
   (module-rated 3.3V-5V), and drives the 8Ω speaker through one complete channel
   pair (L+/L- or R+/R-). Never wire the speaker directly to an ESP32 GPIO — it must

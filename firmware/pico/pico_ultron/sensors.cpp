@@ -1,14 +1,21 @@
 #include <Arduino.h>
 #include "chassis_hal.h"
+#include "features.h"
 #include "sensors.h"
 
 void sensorsInit() {
+#if MINI_ULTRON_ENABLE_ULTRASONIC
   chassisUltrasonicInit();
+#endif
   chassisTrackInit();
 }
 
 float sensorsReadDistanceCm() {
+#if MINI_ULTRON_ENABLE_ULTRASONIC
   return chassisReadDistanceCm();
+#else
+  return SENSORS_NO_DISTANCE;
+#endif
 }
 
 void sensorsReadLine(char out[4]) {
