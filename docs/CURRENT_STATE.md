@@ -8,7 +8,11 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-10-02. **Today (2026-10-02): IMU and ultrasonic dropped from v1** (Enrico:
+Last reviewed: 2026-10-03. **2026-10-03: ESP32-side electronics moved from the breadboard to a
+perfboard** (Enrico, soldered). **Same pins** as the breadboard (pin table below still valid);
+Enrico re-tested everything after the move and it works (VERIFIED). Breadboard-era wiring notes
+in this file are history.
+**2026-10-02: IMU and ultrasonic dropped from v1** (Enrico:
 the IMU "da demasiados problemas"; the ultrasonic won't be on the first units either). Code
 kept, both off by default: ESP32 `features.h` `MINI_ULTRON_ENABLE_IMU` now **0** (imu.{h,cpp}
 are stubs, no jolts ever fire, GPIO13/14 free); new **Pico `features.h`** with
@@ -227,10 +231,13 @@ off-by-default modules (ESP32/Pico `features.h`).
 - 2x 18650 cells: **NOW AVAILABLE as of 2026-09-13.** Car has run under its own
   battery power for the first time this session — see "Pico W firmware status" for
   results (mixed: rear wheels and neck both move, but both have confirmed bugs).
-- INMP441 I2S microphone module: physically acquired, **not wired, not installed**.
-- Freenove 8Ω 2W speaker + "Audio Connectors & Amplifier" board: available from kit,
-  **not wired, not integrated**. ACTIVE in v1. Amplifier board is powered separately
-  via its own VCC/GND (module-rated 3.3V-5V, not yet decided which rail) and drives
+- **Mounting: perfboard since 2026-10-03** (moved off the breadboard by Enrico). Same pins,
+  re-tested after the move and working (VERIFIED) — see the pin table.
+- INMP441 I2S microphone module: **wired and integrated** (2026-09-18, GPIO9/10/11 — see pin
+  table). ACTIVE in v1.
+- Freenove 8Ω 2W speaker + "Audio Converter & Amplifier" board (ES7148 DAC + PAM8403):
+  **wired and integrated** (2026-09-18, GPIO9/10/12, powered from 5V). ACTIVE in v1. Amplifier
+  board is powered separately via its own VCC/GND (module-rated 3.3V-5V) and drives
   the speaker through one complete channel pair (L+/L- or R+/R-) — the speaker must
   never be wired directly to an ESP32 GPIO.
 - Freenove ESP32-S3 camera module: previously test-attached via flex cable.
@@ -808,6 +815,9 @@ sketch is inside the deferred, not-compiled-by-default `waveRightHand()`). Block
 work (I2S, HTTP) lives in the audio and brain FreeRTOS tasks.
 
 ## ESP32-S3 pin allocation
+
+Since 2026-10-03 the wiring lives on a perfboard (was breadboard). Same pins as before the
+move; Enrico re-tested everything on the perfboard and it works (VERIFIED 2026-10-03).
 
 | Pin | Function | Status |
 |---|---|---|
