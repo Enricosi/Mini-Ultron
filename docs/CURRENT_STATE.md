@@ -1129,7 +1129,9 @@ restart cerebro'`.
    el movimiento"). The ESP32 now runs a **NON-DEFAULT build**, `-DMINI_ULTRON_BRAIN_MOVEMENT=1`
    (source unchanged; verified: the binary has the `[motion] start` path and lacks the
    "intent ignored" string). The server was already `movement_allowed=1` (`/api/health`, boot
-   log). Floor test not done yet. A plain source-tree re-flash turns voice movement OFF again.
+   log). **Floor test PHYSICALLY TESTED 2026-10-13 — Enrico: "funciona"**, robot on the floor,
+   moved by voice. **Left ON at Enrico's request ("dejalo encendido")**. A plain source-tree
+   re-flash turns voice movement OFF again — re-flash with the `-D` flag to keep it on.
    Previous text: Optional/later: brain movement stays OFF (re-flash with `-DMINI_ULTRON_BRAIN_MOVEMENT=1` only if
    Enrico asks; with no ultrasonic, the floor test needs extra care). Flash is 92-93%: more
    animations → LittleFS (`MINI_ULTRON_ENABLE_ANIM_FS`) or compression. Adding a dance: convert →
