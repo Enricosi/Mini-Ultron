@@ -1114,8 +1114,9 @@ restart cerebro'`.
    **Gotcha:** Groq on_demand caps at 8000 tokens/min and each call is ~2000 (system prompt ~1800),
    so the default `--delay 1.5` hits 429s after ~4 calls — use `--model openai/gpt-oss-120b
    --delay 20`. The 20b/qwen candidates weren't re-run for that reason (not production).
-2. **Voice check: an unrelated phrase must NOT dance** (text path + unit tests say so; never tried
-   by voice).
+2. ~~**Voice check: an unrelated phrase must NOT dance**~~ — **PHYSICALLY TESTED 2026-10-13 by
+   Enrico, by voice:** unrelated phrases don't dance; it dances only when asked to dance la
+   calabaza.
 3. **`MOVE:FWD` without the obstacle veto** → expect `OK`, wheels in the air, only with Enrico's go
    (moves the wheels).
 4. Enrico physically removes the MPU6050 and HC-SR04 (if not done yet) — firmware no longer
