@@ -10,6 +10,15 @@ Scope: every third-party dependency actually used to build or run Mini-Ultron to
 vendored from elsewhere. Repo layout for context: `firmware/esp32/hello_ultron/`
 (ESP32-S3), `firmware/pico/pico_ultron/` (Pico W), `cerebro/` (Django backend).
 
+## Decision record (V1 consolidation, 2026-10-13)
+
+| Question | Status |
+|---|---|
+| Piper (GPL-3.0) imported in-process by CEREBRO | **Open, not blocking V1.** Fine for running Mini-Ultron at home. Must be resolved by a lawyer before selling a unit or publishing the CEREBRO source. Containment: it is imported in exactly one place (`cerebro/brain/tts.py`, lazily, inside `PiperTTS`) behind the `TTSBackend` interface, and `fetch_models` uses `piper.download_voices`. Replacing it (another TTS class) or moving it behind a subprocess/HTTP boundary is a change to `tts.py` and `services.py` only. |
+| Freenove-derived code | **Closed.** Not in the tree; `chassis_hal` is original (below). |
+| Hosted LLM APIs (Groq, Meta Model API) | Services, not linked code: no license obligation in the repo, but their terms (data use, rate limits, regional availability — Meta's API preview was US-only when this was written) apply to any distributed product. Review before commercializing. Keys live only in `cerebro/.env`. |
+| Anything else | Ordinary BSD/MIT/Apache plus LGPL NeoPixel; keep this file as the NOTICE seed. |
+
 ## Secrets/credentials scan (2026-09-21)
 
 Checked: full tracked working tree, and full git history (`git log --all -p`) for
@@ -102,7 +111,7 @@ never vendored Freenove code to begin with (see WS2812 row).
 | Package | Version | License | Commercial use | Modification | Redistribution | Used for | Risk |
 |---|---|---|---|---|---|---|---|
 | Django | 6.1.1 | BSD-3-Clause | Yes | Yes | Yes | Web framework / HTTP API | Low |
-| httpx | 0.28.1 | BSD-3-Clause | Yes | Yes | Yes | HTTP client to Groq/Ollama | Low |
+| httpx | 0.28.1 | BSD-3-Clause | Yes | Yes | Yes | HTTP client to the LLM providers (Groq, Meta, Ollama, OpenAI-compatible) | Low |
 | numpy | 2.5.3 | BSD-3-Clause (+ small bundled BSD/MIT/Zlib/CC0 pieces) | Yes | Yes | Yes | Audio DSP (`voice_fx.py`, `audio_utils.py`) | Low |
 | faster-whisper | 1.2.1 | MIT | Yes | Yes | Yes | Local STT (wraps CTranslate2 + Whisper) | Low |
 | **piper-tts** | 1.8.0 | **GPL-3.0-or-later** | See "Biggest finding" above | Yes | Yes, but copyleft applies | Local TTS | **High — NEEDS LEGAL REVIEW** |

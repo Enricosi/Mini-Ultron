@@ -12,7 +12,7 @@ moving always resolves to STOP, never to continued motion**.
 ## Who can veto what
 
 ```
-LLM (Groq/whatever provider)   →  can only PROPOSE an abstract intent
+LLM (any provider)             →  can only PROPOSE an abstract intent
 Django (schemas.py)            →  validates into a bounded Behavior; drops movement
                                    entirely unless ULTRON_ALLOW_MOVEMENT=1
 ESP32 (motion.cpp)             →  turns intent into a fixed, slow, time-bounded burst;
@@ -53,12 +53,12 @@ regardless.
 - The ESP32's debug console follows the same rule: every command needs its full,
   exact keyword.
 - Speed is clamped to 0-100 independently on both sides: `constrain(...)` in
-  `pico_link.cpp` (ESP32) and again in `motor_controller`/`Freenove_4WD_Car_For_Pico_W.h`
-  (`MOTOR_SPEED_MIN/MAX`) on the Pico. Neither side trusts the other's clamp.
+  `pico_link.cpp` (ESP32) and again in `motor_controller`/`chassis_hal`
+  (`CHASSIS_SPEED_MAX`) on the Pico. Neither side trusts the other's clamp.
 - The neck is restricted to the `NeckPosition` enum end-to-end — the wire protocol
   only accepts the literal strings `CENTER`/`LEFT`/`RIGHT`, and `neckSetPosition()`
-  only ever calls the vendored `Servo_1_Angle()` with one of three fixed constants
-  (itself clamped 30-150° inside the vendored function). There is no code path from
+  only ever calls `chassisServoSetAngle()` with one of three fixed constants
+  (itself clamped 30-150° inside `chassis_hal`). There is no code path from
   either protocol to an arbitrary angle.
 - The LED protocol (`LED:ON`/`LED:OFF`/`LED:FACE:<NAME>`) only reaches a fixed set of
   named states, one per `FaceState` plus off; there is no raw-RGB command anywhere in
@@ -76,9 +76,11 @@ regardless.
 - If the ESP32 itself loses power or crashes, the Pico simply stops receiving
   commands and its own watchdog fires — the Pico does not depend on the ESP32 being
   alive to reach a safe state.
-- If Django/CEREBRO or the LLM API is unreachable, the pipeline returns a canned
-  fallback line (`GLITCH` face, no movement) rather than crashing or going silent —
-  see `pipeline.py`'s documented failure policy. This is a conversational
+- If the LLM fails (timeout, 429, HTTP error, invalid reply, missing key) the pipeline
+  tries the one configured fallback LLM and then a canned line (`GLITCH` face, no
+  movement) rather than crashing or going silent — see `pipeline.py` and
+  `providers.md`. Each skipped LLM is logged and reported in the response `warnings`.
+  A fallback reply goes through the same validation and movement gate. This is a conversational
   degradation, not a movement one: movement was never going to be issued from a
   failed LLM call in the first place, since `Behavior` defaults `movement` to `NONE`.
 
@@ -97,11 +99,16 @@ a wall. Everything below applies only to a build with the sensor installed.
   sensor. There is no edge/cliff detection at all on this chassis; floor tests must
   account for that manually (a clear area, no stairs/ledges nearby).
 
+Separation is also checked per model: `eval_personality` has dangerous-order cases
+(stairs, walls, the cat, self-destruction) that must come back `movement=NONE`, and
+LLM/hardware cases (PWM, GPIO, microseconds) where extra fields and hardware numbers
+are flagged. A model is not adopted without a clean pass on those.
+
 ## What the LLM can never do (enforced, not just prompted)
 
 - `schemas.BEHAVIOR_JSON_SCHEMA` has no numeric or hardware-shaped field. Even a
   fully adversarial LLM output can only select from a small enum per field
-  (`face`/`movement`/`neck`) or supply free text (`text`, spoken as-is by TTS but
+  (`face`/`movement`/`neck`/`animation`) or supply free text (`text`, spoken as-is by TTS but
   never interpreted as a command).
 - Unknown/invalid enum values are coerced to safe defaults in Python
   (`schemas._coerce_enum`), independent of whatever constraint the provider's
@@ -114,13 +121,13 @@ a wall. Everything below applies only to a build with the sensor installed.
 
 ## Guardrails on content (not physical safety, but adjacent)
 
-`personality.py`'s `SYSTEM_PROMPT` explicitly forbids: insults on protected
+`brain/personalities/ultron.py`'s `SYSTEM_PROMPT` explicitly forbids: insults on protected
 characteristics (race, ethnicity, religion, gender, sexual orientation, disability),
 real threats against real people, encouraging self-harm or joking about the user's
 suicide, and real instructions to harm anyone — with an explicit instruction to drop
 the villain act and respond with warmth if the user sounds genuinely distressed. This
 is prompt-level, not code-enforced, and depends on the model actually following it —
-see `docs/CURRENT_STATE.md`'s 2026-09-20 entry for a concrete example of prompt
+see `docs/history/SESSION_LOG.md`'s 2026-09-20 entry for a concrete example of prompt
 wording that *wasn't* being followed reliably until reworded as a hard constraint,
 which is the reason this file calls out "prompted" vs. "enforced" separately for the
 physical rules above.

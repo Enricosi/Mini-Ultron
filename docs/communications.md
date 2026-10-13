@@ -7,14 +7,16 @@ audio bodies), and designed so the lowest layer never has to trust the layer abo
 ## 1. Django (CEREBRO) ↔ ESP32-S3 — plain HTTP
 
 The ESP32 is the HTTP client; CEREBRO is the server, reachable on the LAN only
-(`ALLOWED_HOSTS = ["*"]`, no auth — do not expose this port to the internet).
+(`ALLOWED_HOSTS` defaults to `*`, narrow it with `DJANGO_ALLOWED_HOSTS`; no auth — do not
+expose this port to the internet).
 
 | Endpoint | Method | Body / params | Response |
 |---|---|---|---|
-| `/api/converse` | POST | one utterance, raw PCM s16le mono 16 kHz (or WAV); header `X-Session-Id` (optional, defaults to `"default"`) | JSON: `transcript`, `behavior {text, face, movement, neck}`, `audio {url, bytes, sample_rate}` or `null`, `timings_ms {stt, llm, tts, total}`, `warnings`, or `{"ignored": true, "reason": ...}` if too short/silent/hallucinated |
+| `/api/converse` | POST | one utterance, raw PCM s16le mono 16 kHz (or WAV); header `X-Session-Id` (optional, defaults to `"default"`) | JSON: `transcript`, `behavior {text, face, movement, neck, animation}`, `audio {url, bytes, sample_rate}` or `null`, `timings_ms {stt, llm, tts, total}`, `warnings`, or `{"ignored": true, "reason": ...}` if too short/silent/hallucinated |
 | `/api/audio/<id>` | GET | — | reply audio, raw PCM s16le mono 16 kHz, `Content-Length` + `X-Sample-Rate` set |
 | `/api/converse_text` | POST | `{"text": "...", "session": "..."}` | same JSON shape as `/api/converse`, no STT — used for testing without a mic |
-| `/api/health` | GET | — | which LLM/STT/TTS backends are configured, whether the API key is set (never its value), and `movement_allowed` |
+| `/api/event` | POST | `{"event": "JOLT", "session": "..."}` | same JSON shape; a controller-reported physical event (unknown names are ignored). Only an IMU build sends `JOLT`. |
+| `/api/health` | GET | — | LLM provider/model/fallback, whether the API key is set (never its value), STT/TTS backends, `movement_allowed`, `personality` |
 
 One request per utterance (not a stream): the firmware already segments whole
 utterances client-side, `HTTPClient` ships with the ESP32 Arduino core, and every
@@ -32,7 +34,8 @@ Python regardless):
   "text": "lo que se dice en voz alta",
   "face": "IDLE | ANGRY | SURPRISED | SUSPICIOUS | SPEAKING | GLITCH | SLEEPING",
   "movement": "NONE | FORWARD | BACKWARD | STRAFE_LEFT | STRAFE_RIGHT | ROTATE_LEFT | ROTATE_RIGHT",
-  "neck": "NONE | CENTER | LEFT | RIGHT"
+  "neck": "NONE | CENTER | LEFT | RIGHT",
+  "animation": "NONE | CALABAZA"
 }
 ```
 
@@ -41,8 +44,12 @@ speed, no duration. `LISTENING` and `THINKING` faces are deliberately absent fro
 this vocabulary — those are ESP32-owned system states, not something the LLM picks.
 Unknown/invalid values fall back to safe defaults (`schemas.parse_behavior`); missing
 `text` is the one fatal case, and it triggers the canned fallback line in
-`personality.FALLBACK_TEXT`/`FALLBACK_FACE` so the robot never goes mute. Movement is
-additionally dropped server-side (`apply_policy`) unless `ULTRON_ALLOW_MOVEMENT=1`.
+the personality's canned `fallback_text`/`fallback_face` so the robot never goes mute
+(after the configured fallback LLM, if any, also failed — see `providers.md`). Movement is
+additionally dropped server-side (`apply_policy`) unless `ULTRON_ALLOW_MOVEMENT=1`, and an
+animation is dropped unless the user's own words ordered a dance (`apply_animation_policy`).
+The response also carries `warnings` (e.g. `llm_error: groq/... timeout: ...`,
+`movement FORWARD dropped: ...`), which the ESP32 ignores and humans read.
 
 ## 2. ESP32-S3 ↔ Pico W — UART, ASCII line protocol
 

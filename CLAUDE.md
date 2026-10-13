@@ -12,8 +12,7 @@ updated after every meaningful session; this one is not.
 Do not turn this into an enterprise framework. Do one concrete feature at a time, test
 components independently before integration, prefer simple/working/understood over
 clever/abstract/framework-heavy. Do not create manager/service/factory abstractions
-that aren't needed yet. Do not rewrite stable Freenove drivers without a concrete
-reason — vendor them, wrap them, don't "clean them up." Commit before risky
+that aren't needed yet. Do not rewrite working firmware without a concrete reason. Commit before risky
 integration work. A `delay()` in a tiny isolated bench-test sketch is fine; the actual
 robot firmware must not block.
 
@@ -24,7 +23,7 @@ Django / home-lab mini server  (high-level brain: CEREBRO)
         | Wi-Fi, plain HTTP: audio in, JSON intent + audio out; never raw hardware values
         v
 ESP32-S3            (upper body: face, voice, network)
-        | UART (see CURRENT_STATE.md)
+        | UART (see docs/hardware.md)
         v
 Raspberry Pi Pico W (lower body: locomotion + local safety)
         v
@@ -102,18 +101,18 @@ while moving must always resolve to STOP, never to continued motion.
 
 ## Firmware conventions
 
-- Vendor official Freenove driver code rather than rewriting it. When trimmed for
-  Mini-Ultron, say what was removed and why in a header comment (see
-  `firmware/pico/pico_ultron/Freenove_4WD_Car_For_Pico_W.h` for the pattern). Don't
-  edit vendored function bodies — add Mini-Ultron-specific behavior in the layer above
-  them (`motor_controller`, `safety_controller`, `sensors`, etc.).
+- No Freenove example code in the tree: the Pico's hardware access is `chassis_hal`,
+  written from scratch (see `THIRD_PARTY_LICENSES.md` for why). Its pins, polarity and
+  servo mapping are physically verified — changing them means re-testing on the robot.
+  Add Mini-Ultron-specific behavior in the layer above it (`motor_controller`,
+  `safety_controller`, `sensors`, etc.). Don't rewrite working firmware out of purism.
 - Pico command protocol is an ASCII line protocol over any `Stream`, so the same
   parser code serves USB Serial today and `Serial1`/UART to the ESP32 later without a
   rewrite. Don't design a protocol that only works over one transport.
 - Don't invent GPIO assignments (ESP32 UART pins, INMP441 pins, audio pins, MPU6050
   I2C pins) ahead of need. Pins get chosen once the physical mounting makes
   accessibility clear, and once what's already occupied is known. Check
-  `docs/CURRENT_STATE.md`'s pin table before assigning anything.
+  `docs/hardware.md`'s pin tables before assigning anything.
 - When a subsystem's pins aren't chosen yet but its logic can still be written
   (e.g. `firmware/esp32/hello_ultron/pico_link_config.h`), gate the real hardware
   path behind a compile-time flag with the pins left at an obviously-invalid default
@@ -125,7 +124,7 @@ while moving must always resolve to STOP, never to continued motion.
 - Don't assert a physical wheel position mapping (which motor is physically
   front-left/back-left/etc.) as fact unless it's been physically confirmed on this
   specific chassis — code comments that reference the official Freenove demo describe
-  a plausible/derived mapping, not a verified one. See CURRENT_STATE.md.
+  a plausible/derived mapping, not a verified one. See docs/hardware.md.
 - The neck servo belongs to the Pico — it is physically wired to the Freenove
   shield's own servo header (confirmed by Enrico), not to the ESP32/PCA9685. Neck
   control must be implemented on the Pico. Don't build new features on top of an
@@ -161,7 +160,8 @@ while moving must always resolve to STOP, never to continued motion.
 ## Documentation maintenance rule
 
 - After every meaningful hardware/firmware session, update `docs/CURRENT_STATE.md`
-  (wiring, GPIOs, tested/untested status, known problems, next step).
+  (snapshot: what exists, what is verified, what is deferred and why, next step) and,
+  if wiring/GPIOs changed, `docs/hardware.md`.
 - Only touch this file (`CLAUDE.md`) when a stable architectural decision, a permanent
   safety rule, or a long-term convention actually changes — not for day-to-day
   progress.

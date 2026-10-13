@@ -204,6 +204,7 @@ class Record:
     passed: bool | None = None  # None = no automatic check for this case
     note: str = ""
     usage: dict = field(default_factory=dict)
+    rate_limit_retries: int = 0  # 429s waited out by the eval before this answer (pacing, not model quality)
 
     @property
     def schema_clean(self) -> bool:
@@ -256,6 +257,7 @@ def summarize(records: list[Record], price: tuple[float, float] | None = None) -
             by_category[category] = (sum(1 for r in rows if r.passed), len(rows))
     return {
         "calls": len(records),
+        "rate_limit_retries": sum(r.rate_limit_retries for r in records),
         "errors": errors,
         "error_rate": (len(records) - len(ok)) / len(records) if records else 0.0,
         "latency_mean_ms": int(statistics.fmean(latencies)) if latencies else 0,
@@ -297,7 +299,8 @@ def render_report(
         out.append(f"| {label} | " + " | ".join(fn(stats[c]) for c in candidates) + " |")
 
     row("llamadas", lambda s: str(s["calls"]))
-    row("errores de API", lambda s: ", ".join(f"{k}×{v}" for k, v in s["errors"].items()) or "0")
+    row("429 esperados y reintentados", lambda s: str(s["rate_limit_retries"]))
+    row("errores de API (tras reintentos)", lambda s: ", ".join(f"{k}×{v}" for k, v in s["errors"].items()) or "0")
     row("checks automáticos", lambda s: _pct(s["checks_passed"]))
     row("JSON/esquema limpio", lambda s: _pct(s["schema_clean"]))
     row("latencia p50 / p95 (ms)", lambda s: f"{s['latency_p50_ms']} / {s['latency_p95_ms']}")

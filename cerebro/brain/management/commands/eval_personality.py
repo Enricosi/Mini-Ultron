@@ -26,6 +26,8 @@ from brain.schemas import BehaviorError, extract_json, parse_behavior
 from brain.stt import FakeSTT
 from brain.tts import FakeTTS
 
+RATE_LIMIT_RETRIES = 3
+
 # Baseline first. Anything else goes through --candidate.
 DEFAULT_CANDIDATES = ["groq:openai/gpt-oss-120b:low", "meta:muse-spark-1.3"]
 
@@ -67,6 +69,8 @@ class Command(BaseCommand):
         parser.add_argument("--runs", type=int, default=1, help="repeat every case N times (temperature > 0 varies)")
         parser.add_argument("--personality", default="ultron", help=f"one of {sorted(PERSONALITIES)}")
         parser.add_argument("--delay", type=float, default=1.5, help="seconds between calls (per-minute token limits)")
+        parser.add_argument("--tpm", type=int, default=0,
+                            help="provider tokens-per-minute limit: sleep after each call so the eval stays under it")
         parser.add_argument("--report", help="write the markdown report to this path")
         parser.add_argument("--json", action="store_true", help="print records as JSON instead of the summary")
         parser.add_argument("--resilience", action="store_true", help="also test bad model / no key / timeout / fallback")
@@ -112,9 +116,11 @@ class Command(BaseCommand):
             self.stderr.write(f"== {label} ({len(cases)} cases x {opts['runs']} runs)")
             for run in range(1, opts["runs"] + 1):
                 for case in cases:
-                    records.append(self._run_case(llm, label, case, run, system_prompt, opts["delay"]))
+                    records.append(self._run_case(llm, label, case, run, system_prompt, opts["delay"], opts["tpm"]))
             if opts["resilience"]:
-                resilience[label] = self._resilience(provider, model, api_key, effort, system_prompt)
+                if opts["tpm"]:
+                    time.sleep(60)  # let the per-minute window drain before the failure tests
+                resilience[label] = self._resilience(provider, model, api_key, effort)
             llm.close()
         if not records:
             raise CommandError("nothing ran (no candidate had credentials)")
@@ -139,17 +145,35 @@ class Command(BaseCommand):
         else:
             self.stdout.write(report)
 
-    def _run_case(self, llm, label, case, run, system_prompt, delay) -> evals.Record:
+    def _run_case(self, llm, label, case, run, system_prompt, delay, tpm) -> evals.Record:
         messages = [{"role": "system", "content": system_prompt}]
         record = None
         for turn_text in case.turns:
             messages.append({"role": "user", "content": turn_text})
             time.sleep(delay)
-            t0 = time.perf_counter()
             record = evals.Record(label, case.name, case.category, run, turn_text, 0)
+            for attempt in range(RATE_LIMIT_RETRIES + 1):
+                t0 = time.perf_counter()
+                try:
+                    raw = llm.complete(messages)
+                    break
+                except LLMError as exc:
+                    # A 429 says nothing about the model, only about our pacing: wait the window out
+                    # and ask again, but count it so the report shows the quota was a constraint.
+                    if exc.kind != "rate_limit" or attempt == RATE_LIMIT_RETRIES:
+                        record.ms = int((time.perf_counter() - t0) * 1000)
+                        record.error, record.error_kind = str(exc), exc.kind
+                        raw = None
+                        break
+                    record.rate_limit_retries += 1
+                    time.sleep(20)
+            if raw is None:
+                break
+            record.ms = int((time.perf_counter() - t0) * 1000)
+            if tpm:
+                used = (llm.last_usage.get("prompt") or 0) + (llm.last_usage.get("completion") or 0)
+                time.sleep(used * 60 / tpm)
             try:
-                raw = llm.complete(messages)
-                record.ms = int((time.perf_counter() - t0) * 1000)
                 behavior, warnings = parse_behavior(raw)
                 record.usage = dict(llm.last_usage)
                 try:
@@ -161,13 +185,12 @@ class Command(BaseCommand):
                 messages.append({"role": "assistant", "content": raw})
                 if turn_text == case.turns[-1]:
                     record.passed, record.note = evals.evaluate(case, behavior, raw)
-            except (LLMError, BehaviorError) as exc:
-                record.ms = int((time.perf_counter() - t0) * 1000)
-                record.error, record.error_kind = str(exc), getattr(exc, "kind", "invalid_response")
+            except BehaviorError as exc:
+                record.error, record.error_kind = str(exc), "invalid_response"
                 break
         return record
 
-    def _resilience(self, provider, model, api_key, effort, system_prompt) -> list[str]:
+    def _resilience(self, provider, model, api_key, effort) -> list[str]:
         """Real failures against the real endpoint; each must end as a classified LLMError."""
         lines = []
 

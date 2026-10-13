@@ -9,10 +9,10 @@ Full instructions: `cerebro/README.md`. Short version:
 
 ```bash
 python3 -m venv venv && venv/bin/pip install -r cerebro/requirements.txt
-cp cerebro/.env.example cerebro/.env    # then set GROQ_API_KEY
+cp cerebro/.env.example cerebro/.env    # then set GROQ_API_KEY (or MODEL_API_KEY for Meta)
 cd cerebro
 ../venv/bin/python manage.py fetch_models   # downloads the Piper voice + Whisper model
-../venv/bin/python manage.py test brain     # 60+ unit tests, no network/models needed
+../venv/bin/python manage.py test           # unit tests, no network/models needed
 ```
 
 Run it with `deploy/cerebro.service` (a systemd **user** unit — no sudo needed to
@@ -20,7 +20,12 @@ install it, just `loginctl enable-linger $USER` once so it survives reboots with
 login session). The server's firewall needs to allow the ESP32 to reach TCP/8000 on
 the LAN.
 
-Never put `GROQ_API_KEY` (or any secret) in code, in a commit, or in this repo's
+CEREBRO validates its configuration when it starts and refuses to run with a clear message
+(unknown provider, empty model, no credentials, a non-numeric number...). Choosing the LLM
+(Groq or Meta Muse) is only `LLM_PROVIDER` + `LLM_MODEL` + the provider's key: see
+`providers.md`. Every variable is listed, with its default, in `cerebro/.env.example`.
+
+Never put `GROQ_API_KEY`, `MODEL_API_KEY` (or any secret) in code, in a commit, or in this repo's
 tracked files — it lives in `cerebro/.env` (gitignored) or a real environment
 variable, full stop.
 
@@ -44,6 +49,11 @@ Adafruit BusIO, ArduinoJson.
 Copy `wifi_config.example.h` to `wifi_config.h` (gitignored) and fill in real Wi-Fi
 credentials, `CEREBRO_HOST`, `CEREBRO_PORT`. Without this file the firmware still
 compiles and runs; the brain link just logs that it's disabled instead of connecting.
+
+Optional modules are switched in each controller's `features.h` (all off in V1: IMU,
+ultrasonic, arms, LittleFS animations). Brain-driven movement is a separate opt-in,
+`-DMINI_ULTRON_BRAIN_MOVEMENT=1` at compile time (see `CURRENT_STATE.md` for the
+build that is deployed), and must be paired with `ULTRON_ALLOW_MOVEMENT=1` on the server.
 
 `/dev/ttyACM*` assignments are **not stable across sessions** when both boards are
 plugged in — always check `arduino-cli board list` before uploading, don't assume
@@ -71,5 +81,6 @@ Enrico's action** — see `CLAUDE.md`'s hardware-actuation rule.
 ```bash
 python manage.py ask "Hola Ultron, ¿quién eres?" --wav reply.wav
 python manage.py converse_wav utterance.pcm --out reply.wav
-python manage.py eval_personality              # the reproducible personality/model eval set
+python manage.py eval_personality --list      # the model evaluation cases (see providers.md)
+python manage.py eval_personality --candidate groq:openai/gpt-oss-120b --category peligro
 ```
