@@ -1117,8 +1117,12 @@ restart cerebro'`.
 2. ~~**Voice check: an unrelated phrase must NOT dance**~~ — **PHYSICALLY TESTED 2026-10-13 by
    Enrico, by voice:** unrelated phrases don't dance; it dances only when asked to dance la
    calabaza.
-3. **`MOVE:FWD` without the obstacle veto** → expect `OK`, wheels in the air, only with Enrico's go
-   (moves the wheels).
+3. ~~**`MOVE:FWD` without the obstacle veto**~~ — **PHYSICALLY TESTED 2026-10-13**, wheels in
+   the air, Enrico's go: Claude sent `MOVE:FWD:40` straight to the Pico's USB serial → `OK`, then
+   `STOPPED:TIMEOUT` ~0.5 s later, then `STOP` → `OK`; Enrico confirmed all 4 wheels spun forward.
+   (His own earlier attempt didn't move — no firmware gate exists on manual `MOVE`; it needs the
+   speed, `MOVE:FWD:<0-100>`, and voice movement is off by design.) Ports this session: Pico
+   `/dev/ttyACM0`, ESP32 `/dev/ttyACM1`.
 4. Enrico physically removes the MPU6050 and HC-SR04 (if not done yet) — firmware no longer
    touches GPIO13/14 (ESP32) or GP4/GP5 (Pico).
 5. Optional/later: brain movement stays OFF (re-flash with `-DMINI_ULTRON_BRAIN_MOVEMENT=1` only if
