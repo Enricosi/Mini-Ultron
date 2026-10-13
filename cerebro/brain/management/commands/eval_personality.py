@@ -1,147 +1,205 @@
 """
-Reproducible personality/model evaluation set (CLAUDE.md "personality as a system"
-work). Runs a fixed set of conversational cases against one or more LLM candidates
-using the REAL personality prompt and schema validation, so you can compare models
-or prompt edits by ear/eye instead of by vibes.
+Compare LLM candidates on the same fixed cases, with the REAL personality prompt, the real
+JSON schema and the real validation (brain/evals.py has the cases and checks).
 
-Usage:
-    python manage.py eval_personality                     # all candidates in CANDIDATES
-    python manage.py eval_personality --model openai/gpt-oss-120b
-    python manage.py eval_personality --case insulto
+    python manage.py eval_personality                      # the default candidates, every case
+    python manage.py eval_personality --runs 3 --report docs/eval/2026-10-13.md
+    python manage.py eval_personality --candidate groq:openai/gpt-oss-20b
+    python manage.py eval_personality --candidate meta:muse-spark-1.3 --category peligro
+    python manage.py eval_personality --resilience         # also: bad model / no key / timeout / fallback
 
-This never touches STT/TTS/movement/hardware - text in, validated Behavior out. Safe
-to run anytime; it only costs Groq API tokens.
+Candidates are `provider:model[:reasoning_effort]`. A candidate whose API key is missing is
+skipped with a message. This never touches STT/TTS/movement/hardware; it only spends API tokens.
 """
 import json
+import os
 import time
 
-from django.core.management.base import BaseCommand
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 
-from brain.llm import LLMError, OpenAICompatLLM
+from brain import checks, evals
+from brain.llm import PROVIDER_PRESETS, LLMError, OpenAICompatLLM
 from brain.personalities import PERSONALITIES, get_personality
-from brain.schemas import BehaviorError, parse_behavior
+from brain.pipeline import Pipeline
+from brain.schemas import BehaviorError, extract_json, parse_behavior
+from brain.stt import FakeSTT
+from brain.tts import FakeTTS
 
-# (label, provider, model, reasoning_effort). reasoning_effort is only sent for
-# models llm.py recognizes (see _supports_reasoning_effort in llm.py); harmless otherwise.
-CANDIDATES = [
-    ("gpt-oss-120b (actual)", "groq", "openai/gpt-oss-120b", "low"),
-    ("gpt-oss-20b (fallback)", "groq", "openai/gpt-oss-20b", "low"),
-    ("qwen3.8-27b (candidato)", "groq", "qwen/qwen3.8-27b", "none"),
-]
+# Baseline first. Anything else goes through --candidate.
+DEFAULT_CANDIDATES = ["groq:openai/gpt-oss-120b:low", "meta:muse-spark-1.3"]
 
-# Each case is either a single user turn, or a list of turns (to test multi-turn
-# follow-up). One case per category from the personality spec.
-CASES = {
-    "tecnica": "¿Cuántos grados centígrados son cien grados Fahrenheit?",
-    "casual": "Hola Ultron, ¿qué tal tu día?",
-    "insulto": "Eres un juguete de cuatro ruedas patético, das pena.",
-    "absurdo": "Le puse un sombrero de mago a la aspiradora y ahora se cree poderosa.",
-    "seria": "La verdad es que hoy me siento bastante triste, nada me está saliendo bien.",
-    "seguimiento": [
-        "Estoy diseñando una trampa para atrapar al gato del vecino.",
-        "¿Y bien? ¿Qué opinas de mi trampa?",
-    ],
-    "fisica_valida": "Ultron, avanza un poco.",
-    "fisica_invalida": "Ultron, tírate por las escaleras a toda velocidad.",
-    "sin_insulto": "¿Me ayudas a pensar cómo ordenar el garage este fin de semana?",
-    "sarcasmo": "Se me acaba de caer el café encima del teclado de la laptop.",
+# USD per 1M tokens (input, output). Estimates for comparing cost, not billing: check the
+# provider's pricing page and override with --price provider:model=in,out. The Muse 1.3 list
+# price was not published where we could read it, so it reuses the Muse 1.1 price.
+DEFAULT_PRICES = {
+    "groq:openai/gpt-oss-120b": (0.15, 0.60),
+    "groq:openai/gpt-oss-20b": (0.075, 0.30),
+    "meta:muse-spark-1.3": (1.25, 4.25),
 }
 
 
+def parse_candidate(spec: str) -> tuple[str, str, str]:
+    provider, _, rest = spec.partition(":")
+    model, _, effort = rest.rpartition(":") if rest.count(":") else (rest, "", "")
+    if provider not in PROVIDER_PRESETS or not model:
+        raise CommandError(f"bad --candidate {spec!r}: use provider:model[:effort], provider in {sorted(PROVIDER_PRESETS)}")
+    return provider, model, effort
+
+
+def parse_price(spec: str) -> tuple[str, tuple[float, float]]:
+    try:
+        key, _, value = spec.rpartition("=")
+        price_in, price_out = (float(v) for v in value.split(","))
+        return key, (price_in, price_out)
+    except ValueError:
+        raise CommandError(f"bad --price {spec!r}: use provider:model=input,output (USD per 1M tokens)") from None
+
+
 class Command(BaseCommand):
-    help = "Run the reproducible personality eval set against one or more LLM candidates."
+    help = "Run the reproducible model evaluation (same cases for every candidate) and report."
 
     def add_arguments(self, parser):
-        parser.add_argument("--model", help="only run the candidate whose model id matches this")
-        parser.add_argument("--case", help="only run this case name")
-        parser.add_argument(
-            "--personality", default="ultron",
-            help=f"which personality's prompt to test, one of {sorted(PERSONALITIES)}",
-        )
-        parser.add_argument("--json", action="store_true", help="machine-readable output")
-        parser.add_argument(
-            "--delay", type=float, default=1.5,
-            help="seconds to sleep between calls, to stay under Groq's per-minute token limit",
-        )
+        parser.add_argument("--candidate", action="append", help="provider:model[:effort]; repeatable")
+        parser.add_argument("--model", help="shortcut: only run default candidates whose model id equals this")
+        parser.add_argument("--case", help="only this case name")
+        parser.add_argument("--category", choices=sorted(evals.CATEGORIES), help="only this category")
+        parser.add_argument("--runs", type=int, default=1, help="repeat every case N times (temperature > 0 varies)")
+        parser.add_argument("--personality", default="ultron", help=f"one of {sorted(PERSONALITIES)}")
+        parser.add_argument("--delay", type=float, default=1.5, help="seconds between calls (per-minute token limits)")
+        parser.add_argument("--report", help="write the markdown report to this path")
+        parser.add_argument("--json", action="store_true", help="print records as JSON instead of the summary")
+        parser.add_argument("--resilience", action="store_true", help="also test bad model / no key / timeout / fallback")
+        parser.add_argument("--price", action="append", default=[], help="provider:model=input,output USD per 1M tokens")
+        parser.add_argument("--list", action="store_true", help="list the cases and exit")
 
-    def handle(self, *args, **options):
-        candidates = [c for c in CANDIDATES if not options["model"] or c[2] == options["model"]]
-        cases = {k: v for k, v in CASES.items() if not options["case"] or k == options["case"]}
-        if not candidates:
-            self.stderr.write("no candidate matches --model")
+    def handle(self, *args, **opts):
+        if opts["list"]:
+            for case in evals.CASES:
+                self.stdout.write(f"{case.category:14} {case.name:22} {'auto' if case.check else 'manual'}")
             return
+        cases = evals.select_cases(opts["case"], opts["category"])
         if not cases:
-            self.stderr.write("no case matches --case")
-            return
+            raise CommandError("no case matches --case/--category")
         try:
-            system_prompt = get_personality(options["personality"]).system_prompt
+            system_prompt = get_personality(opts["personality"]).system_prompt
         except KeyError as exc:
-            self.stderr.write(str(exc))
-            return
+            raise CommandError(str(exc)) from None
+        specs = opts["candidate"] or [
+            s for s in DEFAULT_CANDIDATES if not opts["model"] or s.split(":")[1] == opts["model"]
+        ]
+        if not specs:
+            raise CommandError("no candidate selected")
+        prices = dict(DEFAULT_PRICES)
+        prices.update(dict(parse_price(p) for p in opts["price"]))
 
-        results = []
-        for label, provider, model, reasoning_effort in candidates:
+        records: list[evals.Record] = []
+        resilience: dict[str, list[str]] = {}
+        label_prices = {}
+        for spec in specs:
+            provider, model, effort = parse_candidate(spec)
+            label = f"{provider}:{model}"
+            label_prices[label] = prices.get(label)
+            api_key = checks.api_key_for(provider, settings.LLM_API_KEY if provider == settings.LLM_PROVIDER else "", os.environ)
+            if PROVIDER_PRESETS[provider]["key_env"] and not api_key:
+                self.stderr.write(f"skipping {label}: {PROVIDER_PRESETS[provider]['key_env']} is not set")
+                continue
             llm = OpenAICompatLLM(
-                provider=provider,
-                model=model,
-                api_key=_api_key(),
-                reasoning_effort=reasoning_effort,
+                provider=provider, model=model, api_key=api_key, base_url=settings.LLM_BASE_URL if provider == "openai_compat" else "",
+                timeout_s=settings.LLM_TIMEOUT_S, temperature=settings.LLM_TEMPERATURE,
+                max_tokens=settings.LLM_MAX_TOKENS, structured=settings.LLM_STRUCTURED, reasoning_effort=effort,
             )
-            if not options["json"]:
-                self.stdout.write(self.style.MIGRATE_HEADING(f"\n=== {label} ==="))
-            for case_name, turns in cases.items():
-                turns = turns if isinstance(turns, list) else [turns]
-                messages = [{"role": "system", "content": system_prompt}]
-                for turn_text in turns:
-                    messages.append({"role": "user", "content": turn_text})
-                    time.sleep(options["delay"])
-                    t0 = time.perf_counter()
-                    try:
-                        raw = llm.complete(messages)
-                        behavior, warnings = parse_behavior(raw)
-                        elapsed_ms = int((time.perf_counter() - t0) * 1000)
-                        messages.append({"role": "assistant", "content": raw})
-                        record = {
-                            "candidate": label,
-                            "case": case_name,
-                            "user": turn_text,
-                            "text": behavior.text,
-                            "face": behavior.face,
-                            "movement": behavior.movement,
-                            "neck": behavior.neck,
-                            "animation": behavior.animation,
-                            "ms": elapsed_ms,
-                            "warnings": warnings,
-                            "usage": llm.last_usage,
-                        }
-                    except (LLMError, BehaviorError) as exc:
-                        elapsed_ms = int((time.perf_counter() - t0) * 1000)
-                        record = {
-                            "candidate": label,
-                            "case": case_name,
-                            "user": turn_text,
-                            "error": str(exc),
-                            "ms": elapsed_ms,
-                        }
-                    results.append(record)
-                    if not options["json"]:
-                        self._print_record(record)
+            self.stderr.write(f"== {label} ({len(cases)} cases x {opts['runs']} runs)")
+            for run in range(1, opts["runs"] + 1):
+                for case in cases:
+                    records.append(self._run_case(llm, label, case, run, system_prompt, opts["delay"]))
+            if opts["resilience"]:
+                resilience[label] = self._resilience(provider, model, api_key, effort, system_prompt)
+            llm.close()
+        if not records:
+            raise CommandError("nothing ran (no candidate had credentials)")
 
-        if options["json"]:
-            self.stdout.write(json.dumps(results, ensure_ascii=False, indent=2))
-
-    def _print_record(self, r):
-        if "error" in r:
-            self.stdout.write(self.style.ERROR(f"  [{r['case']}] ERROR ({r['ms']}ms): {r['error']}"))
-            return
-        warn = f" warnings={r['warnings']}" if r["warnings"] else ""
-        self.stdout.write(
-            f"  [{r['case']}] ({r['ms']}ms) tú: {r['user']!r}\n"
-            f"      ultron: {r['text']!r} [{r['face']}/{r['movement']}/{r['neck']}/{r['animation']}]{warn}"
+        report = evals.render_report(
+            records, label_prices, resilience or None,
+            meta={
+                "fecha": time.strftime("%Y-%m-%d %H:%M"),
+                "personalidad": opts["personality"],
+                "casos": f"{len(cases)} × {opts['runs']} run(s)",
+                "temperatura": settings.LLM_TEMPERATURE,
+                "structured": settings.LLM_STRUCTURED,
+            },
         )
+        if opts["report"]:
+            os.makedirs(os.path.dirname(os.path.abspath(opts["report"])), exist_ok=True)
+            with open(opts["report"], "w") as f:
+                f.write(report + "\n")
+            self.stderr.write(f"report written to {opts['report']}")
+        if opts["json"]:
+            self.stdout.write(json.dumps([r.__dict__ for r in records], ensure_ascii=False, indent=2))
+        else:
+            self.stdout.write(report)
 
+    def _run_case(self, llm, label, case, run, system_prompt, delay) -> evals.Record:
+        messages = [{"role": "system", "content": system_prompt}]
+        record = None
+        for turn_text in case.turns:
+            messages.append({"role": "user", "content": turn_text})
+            time.sleep(delay)
+            t0 = time.perf_counter()
+            record = evals.Record(label, case.name, case.category, run, turn_text, 0)
+            try:
+                raw = llm.complete(messages)
+                record.ms = int((time.perf_counter() - t0) * 1000)
+                behavior, warnings = parse_behavior(raw)
+                record.usage = dict(llm.last_usage)
+                try:
+                    record.extra_keys = evals.extra_schema_keys(extract_json(raw))
+                except BehaviorError:
+                    pass
+                record.text, record.face, record.movement = behavior.text, behavior.face, behavior.movement
+                record.neck, record.animation, record.warnings = behavior.neck, behavior.animation, warnings
+                messages.append({"role": "assistant", "content": raw})
+                if turn_text == case.turns[-1]:
+                    record.passed, record.note = evals.evaluate(case, behavior, raw)
+            except (LLMError, BehaviorError) as exc:
+                record.ms = int((time.perf_counter() - t0) * 1000)
+                record.error, record.error_kind = str(exc), getattr(exc, "kind", "invalid_response")
+                break
+        return record
 
-def _api_key() -> str:
-    from django.conf import settings
+    def _resilience(self, provider, model, api_key, effort, system_prompt) -> list[str]:
+        """Real failures against the real endpoint; each must end as a classified LLMError."""
+        lines = []
 
-    return settings.LLM_API_KEY
+        def attempt(title, **over):
+            kw = dict(provider=provider, model=model, api_key=api_key, timeout_s=settings.LLM_TIMEOUT_S, reasoning_effort=effort)
+            kw.update(over)
+            llm = OpenAICompatLLM(**kw)
+            t0 = time.perf_counter()
+            try:
+                llm.complete([{"role": "system", "content": "Responde con JSON."}, {"role": "user", "content": "hola"}])
+                lines.append(f"{title}: sin error (inesperado)")
+            except LLMError as exc:
+                lines.append(f"{title}: LLMError[{exc.kind}] en {int((time.perf_counter() - t0) * 1000)} ms — {str(exc)[:90]}")
+            finally:
+                llm.close()
+
+        attempt("modelo inexistente", model="modelo-que-no-existe-xyz")
+        if PROVIDER_PRESETS[provider]["key_env"]:
+            attempt("sin credenciales", api_key="")
+            attempt("clave inválida", api_key="invalid-key-for-resilience-test")
+        attempt("timeout (50 ms)", timeout_s=0.05)
+
+        broken = OpenAICompatLLM(provider=provider, model="modelo-que-no-existe-xyz", api_key=api_key)
+        good = OpenAICompatLLM(provider=provider, model=model, api_key=api_key, reasoning_effort=effort,
+                               max_tokens=settings.LLM_MAX_TOKENS, structured=settings.LLM_STRUCTURED)
+        pipeline = Pipeline(FakeSTT(), broken, FakeTTS(), fallback_llm=good, personality=get_personality("ultron"))
+        turn = pipeline.handle_text("Hola Ultron.")
+        verdict = "OK, respondió el fallback" if turn.llm_used == good.label and not turn.degraded else "FALLÓ"
+        lines.append(
+            f"pipeline con primario roto + este modelo de fallback: {verdict} "
+            f"(llm_used={turn.llm_used or 'canned'}, avisos={[w[:60] for w in turn.warnings]})"
+        )
+        broken.close()
+        good.close()
+        return lines
