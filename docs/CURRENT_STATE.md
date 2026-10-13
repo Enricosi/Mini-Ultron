@@ -1094,7 +1094,9 @@ No existing safety behavior was weakened.
 - ~~Speaker/amplifier wiring~~ — **WIRED and WORKING 2026-09-18**, confirmed by Enrico against the official Freenove ESP32-S3 example: the Audio Converter & Amplifier is one board (ES7148 DAC + PAM8403 amp), VCC 3.3-5.0V powered from 5V, speaker on L+/L-, SCK/MCLK not connected. Wiring: BCK->GPIO9, LCK->GPIO10 (shared with the mic's SCK/WS, intentionally), DIN->GPIO12. Bench sketch `firmware/esp32/audio_out_test/` (440 Hz beep, MCLK disabled) compiles, uploaded; Enrico confirmed a clean 440 Hz beep. **Mic + speaker full-duplex on one I2S port VERIFIED 2026-09-18** (`mic_speaker_test`): both directions coexist on the shared GPIO9/10 clocks. Recorded voice plays back intelligibly with some "old radio" character (16 kHz / 8 kHz bandwidth, mic noise floor); ~x3 playback gain is the best balance. Anything combining mic + speaker must use ONE I2S instance in full-duplex, not two instances fighting over GPIO9/10. Untested next levers if quality matters later: higher sample rate (32/44.1 kHz), noise gate/filtering.
 - ~~MPU6050 wiring and I2C pin selection~~ — **WIRED, integrated as `imu.{h,cpp}` 2026-09-18**, works cleanly on its own but is corrupted by the I2S audio clocks on the current wiring — see "`imu.{h,cpp}`" section. Bench sketch `mpu6050_test` verified motion response earlier (accel/gyro respond, settle back to az ~1.05 g).
 - Decision on whether the Freenove shield's 5V rail can safely power the ESP32
-  subsystem (not yet measured — do not connect until verified).
+  subsystem — **MEASURED 2026-10-13 by Enrico: 5V** (multimeter). Static reading only: not
+  yet checked under load (motors running + speaker), where the rail could sag; not yet
+  connected to the ESP32.
 
 ## Immediate next step
 
@@ -1123,8 +1125,8 @@ restart cerebro'`.
    (His own earlier attempt didn't move — no firmware gate exists on manual `MOVE`; it needs the
    speed, `MOVE:FWD:<0-100>`, and voice movement is off by design.) Ports this session: Pico
    `/dev/ttyACM0`, ESP32 `/dev/ttyACM1`.
-4. Enrico physically removes the MPU6050 and HC-SR04 (if not done yet) — firmware no longer
-   touches GPIO13/14 (ESP32) or GP4/GP5 (Pico).
+4. ~~Enrico physically removes the MPU6050 and HC-SR04~~ — **DONE** (Enrico confirmed
+   2026-10-13). GPIO13/14 (ESP32) and GP4/GP5 (Pico) are free.
 5. **2026-10-13: brain movement is ON for the floor test** (Enrico asked: "tienes q desbloquear
    el movimiento"). The ESP32 now runs a **NON-DEFAULT build**, `-DMINI_ULTRON_BRAIN_MOVEMENT=1`
    (source unchanged; verified: the binary has the `[motion] start` path and lacks the
