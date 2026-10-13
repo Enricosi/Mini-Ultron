@@ -3,8 +3,10 @@ The whole CEREBRO turn: audio -> STT -> LLM -> validated Behavior -> TTS.
 
 Failure policy (the robot should never just go silent):
 - STT returns nothing / a Whisper hallucination -> the turn is "ignored", no reply.
-- LLM fails or returns unusable output        -> canned fallback line + GLITCH face.
-- TTS fails                                   -> behavior is still returned, without audio.
+- Main LLM fails or returns unusable output     -> the one configured fallback LLM, if any
+                                                   (warning "llm_fallback: ..."; never silent).
+- Fallback also fails / none configured         -> canned line + GLITCH face (turn.degraded).
+- TTS fails                                     -> behavior is still returned, without audio.
 """
 import json
 import logging
@@ -22,8 +24,6 @@ from .stt import STTBackend, is_hallucination
 from .tts import Speech, TTSBackend, TTSError
 
 logger = logging.getLogger("brain.pipeline")
-
-MIN_AUDIO_S = 0.3  # shorter than this is a click, not speech
 
 # Physical events a controller can report instead of an utterance (see each personality's
 # "EVENTOS FÍSICOS" prompt section, e.g. personalities/ultron.py). The firmware sends the
@@ -90,6 +90,10 @@ class Turn:
     audio: Speech | None = None
     timings_ms: dict = field(default_factory=dict)
     warnings: list = field(default_factory=list)
+    id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])  # interaction id, in every log line
+    llm_used: str = ""  # "provider/model" that produced the reply; "" = canned line
+    degraded: bool = False  # True = no LLM answered, the canned line was used
+    usage: dict = field(default_factory=dict)  # token counts of the LLM call that answered
 
 
 class Pipeline:
@@ -98,14 +102,18 @@ class Pipeline:
         stt: STTBackend,
         llm: LLMBackend,
         tts: TTSBackend,
+        fallback_llm: LLMBackend | None = None,
         history: History | None = None,
         audio_store: AudioStore | None = None,
         allow_movement: bool = False,
         max_reply_chars: int = 280,
         personality: Personality = DEFAULT_PERSONALITY,
+        min_audio_s: float = 0.3,
     ):
         self.stt = stt
         self.llm = llm
+        self.fallback_llm = fallback_llm
+        self.min_audio_s = min_audio_s
         self.personality = personality
         self.tts = tts
         self.history = history or History()
@@ -122,7 +130,7 @@ class Pipeline:
             audio = audio_utils.decode_upload(body)
         except (ValueError, EOFError) as exc:
             return self._ignore(turn, f"bad_audio: {exc}", t0)
-        if len(audio) / audio_utils.SAMPLE_RATE < MIN_AUDIO_S:
+        if len(audio) / audio_utils.SAMPLE_RATE < self.min_audio_s:
             return self._ignore(turn, "too_short", t0)
 
         t = time.perf_counter()
@@ -155,8 +163,29 @@ class Pipeline:
         turn.ignored = True
         turn.ignored_reason = reason
         turn.timings_ms["total"] = _ms(t0)
-        logger.info("turn ignored (%s) stt=%sms", reason, turn.timings_ms.get("stt", "-"))
+        logger.info("[%s] turn ignored (%s) stt=%sms", turn.id, reason, turn.timings_ms.get("stt", "-"))
         return turn
+
+    def _ask_llm(self, turn: Turn, messages: list[dict]) -> Behavior:
+        """Main LLM, then the configured fallback, then the canned line. Every skip is logged."""
+        for llm in (self.llm, self.fallback_llm):
+            if llm is None:
+                continue
+            t = time.perf_counter()
+            try:
+                behavior, warnings = parse_behavior(llm.complete(messages), self.max_reply_chars)
+            except (LLMError, BehaviorError) as exc:
+                kind = getattr(exc, "kind", "invalid_response")
+                logger.warning("[%s] %s failed (%s, %dms): %s", turn.id, llm.label, kind, _ms(t), exc)
+                turn.warnings.append(f"llm_error: {llm.label} {kind}: {exc}")
+                continue
+            turn.warnings += warnings
+            turn.llm_used = llm.label
+            turn.usage = dict(llm.last_usage or {})
+            return behavior
+        turn.degraded = True
+        logger.error("[%s] no LLM answered, using the canned line", turn.id)
+        return Behavior(text=self.personality.fallback_text, face=self.personality.fallback_face)
 
     def _respond(self, turn: Turn, user_text: str, session: str, t0: float, from_speech: bool = True) -> Turn:
         messages = [{"role": "system", "content": self.personality.system_prompt}]
@@ -164,13 +193,7 @@ class Pipeline:
         messages.append({"role": "user", "content": user_text})
 
         t = time.perf_counter()
-        try:
-            behavior, warnings = parse_behavior(self.llm.complete(messages), self.max_reply_chars)
-            turn.warnings += warnings
-        except (LLMError, BehaviorError) as exc:
-            logger.warning("LLM/behavior failure, using fallback: %s", exc)
-            turn.warnings.append(f"fallback: {exc}")
-            behavior = Behavior(text=self.personality.fallback_text, face=self.personality.fallback_face)
+        behavior = self._ask_llm(turn, messages)
         turn.timings_ms["llm"] = _ms(t)
 
         requested_movement = behavior.movement
@@ -182,7 +205,7 @@ class Pipeline:
         if behavior.animation != requested_animation:
             turn.warnings.append(f"animation {requested_animation} dropped: no explicit dance order")
         turn.behavior = behavior
-        if "fallback" not in " ".join(turn.warnings):
+        if not turn.degraded:
             self.history.add(session, user_text, behavior)
 
         t = time.perf_counter()
@@ -190,18 +213,20 @@ class Pipeline:
             turn.audio = self.tts.synthesize(behavior.text)
             turn.audio_id = self.audio_store.put(turn.audio)
         except TTSError as exc:
-            logger.warning("TTS failure, replying without audio: %s", exc)
+            logger.warning("[%s] TTS failure, replying without audio: %s", turn.id, exc)
             turn.warnings.append(f"tts: {exc}")
         turn.timings_ms["tts"] = _ms(t)
 
         turn.timings_ms["total"] = _ms(t0)
         logger.info(
-            "turn stt=%sms llm=%sms tts=%sms total=%sms tokens=%s | %r -> [%s/%s/%s/%s] %r",
+            "[%s] turn llm=%s stt=%sms llm=%sms tts=%sms total=%sms tokens=%s | %r -> [%s/%s/%s/%s] %r",
+            turn.id,
+            turn.llm_used or "canned",
             turn.timings_ms.get("stt", "-"),
             turn.timings_ms["llm"],
             turn.timings_ms["tts"],
             turn.timings_ms["total"],
-            getattr(self.llm, "last_usage", None) or "-",
+            turn.usage or "-",
             user_text[:60],
             behavior.face,
             behavior.movement,

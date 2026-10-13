@@ -1,9 +1,12 @@
 """Builds the Pipeline from Django settings (once), so backends stay swappable by config."""
+import atexit
 import logging
+import os
 import threading
 
 from django.conf import settings
 
+from . import checks
 from .llm import FakeLLM, OpenAICompatLLM
 from .personalities import get_personality
 from .pipeline import AudioStore, History, Pipeline
@@ -19,17 +22,39 @@ _lock = threading.Lock()
 def build_llm():
     if settings.LLM_PROVIDER == "fake":
         return FakeLLM()
+    return _openai_compat(
+        settings.LLM_PROVIDER,
+        settings.LLM_MODEL,
+        checks.main_key(settings, os.environ),
+        settings.LLM_BASE_URL,
+    )
+
+
+def build_fallback_llm():
+    """The one explicitly configured fallback LLM, or None."""
+    if not settings.LLM_FALLBACK_MODEL:
+        return None
+    if settings.LLM_FALLBACK_PROVIDER == "fake":
+        return FakeLLM()
+    return _openai_compat(
+        settings.LLM_FALLBACK_PROVIDER,
+        settings.LLM_FALLBACK_MODEL,
+        checks.fallback_key(settings, os.environ),
+        settings.LLM_FALLBACK_BASE_URL or settings.LLM_BASE_URL,
+    )
+
+
+def _openai_compat(provider, model, api_key, base_url):
     return OpenAICompatLLM(
-        provider=settings.LLM_PROVIDER,
-        model=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        base_url=settings.LLM_BASE_URL,
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
         timeout_s=settings.LLM_TIMEOUT_S,
         temperature=settings.LLM_TEMPERATURE,
         max_tokens=settings.LLM_MAX_TOKENS,
         structured=settings.LLM_STRUCTURED,
         reasoning_effort=settings.LLM_REASONING_EFFORT,
-        fallback_model=settings.LLM_FALLBACK_MODEL,
     )
 
 
@@ -73,17 +98,31 @@ def get_pipeline() -> Pipeline:
     if _pipeline is None:
         with _lock:
             if _pipeline is None:
+                checks.check_settings(settings, os.environ)
                 _pipeline = Pipeline(
                     stt=build_stt(),
                     llm=build_llm(),
+                    fallback_llm=build_fallback_llm(),
                     tts=build_tts(),
                     history=History(settings.ULTRON_HISTORY_TURNS),
                     audio_store=AudioStore(),
                     allow_movement=settings.ULTRON_ALLOW_MOVEMENT,
                     max_reply_chars=settings.ULTRON_MAX_REPLY_CHARS,
+                    min_audio_s=settings.ULTRON_MIN_AUDIO_S,
                     personality=build_personality(),
                 )
     return _pipeline
+
+
+def shutdown() -> None:
+    """Release the HTTP clients. Registered atexit so gunicorn/management commands exit cleanly."""
+    if _pipeline is not None:
+        for llm in (_pipeline.llm, _pipeline.fallback_llm):
+            if llm is not None:
+                llm.close()
+
+
+atexit.register(shutdown)
 
 
 def set_pipeline(pipeline: Pipeline | None) -> None:
@@ -101,9 +140,9 @@ def preload() -> None:
         except Exception:  # keep the server up; the error resurfaces per request
             logger.exception("preload failed for %s", backend.name)
     logger.info(
-        "CEREBRO ready: llm=%s/%s stt=%s/%s tts=%s/%s movement=%s personality=%s",
-        pipeline.llm.name,
-        getattr(pipeline.llm, "model", "-"),
+        "CEREBRO ready: llm=%s fallback=%s stt=%s/%s tts=%s/%s movement=%s personality=%s",
+        pipeline.llm.label,
+        pipeline.fallback_llm.label if pipeline.fallback_llm else "none",
         pipeline.stt.name,
         getattr(pipeline.stt, "model_name", "-"),
         pipeline.tts.name,

@@ -10,6 +10,7 @@ HTTP API used by the ESP32 (and by curl for debugging).
                            a controller-reported physical event, see pipeline.EVENT_PROMPTS)
   GET  /api/health         which backends are configured (never returns secrets)
 """
+import json
 import logging
 
 from django.conf import settings
@@ -21,7 +22,6 @@ from . import audio_utils, services
 
 logger = logging.getLogger("brain.views")
 
-MAX_BODY_BYTES = 2 * 1024 * 1024  # ~65 s of 16 kHz audio; the firmware caps utterances at 12 s
 SAMPLE_FORMAT = "pcm_s16le_mono"
 
 
@@ -69,7 +69,7 @@ def _save_debug_audio(body: bytes) -> None:
 @require_POST
 def converse(request):
     body = request.body
-    if len(body) > MAX_BODY_BYTES:
+    if len(body) > settings.ULTRON_MAX_BODY_BYTES:
         return JsonResponse({"ok": False, "error": "body_too_large"}, status=413)
     _save_debug_audio(body)
     try:
@@ -80,42 +80,32 @@ def converse(request):
     return JsonResponse(_turn_json(turn))
 
 
-@csrf_exempt
-@require_POST
-def converse_text(request):
-    import json
-
+def _json_turn(request, field: str, handler_name: str, normalize=str):
+    """Shared body of the JSON endpoints: parse {field, session}, run the pipeline, answer."""
     try:
         payload = json.loads(request.body or b"{}")
-        text = str(payload.get("text", ""))
+        value = normalize(str(payload.get(field, "")))
         session = str(payload.get("session", "default"))[:64]
     except (json.JSONDecodeError, AttributeError):
         return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
     try:
-        turn = services.get_pipeline().handle_text(text, session)
+        turn = getattr(services.get_pipeline(), handler_name)(value, session)
     except Exception:
-        logger.exception("converse_text failed")
+        logger.exception("%s failed", handler_name)
         return JsonResponse({"ok": False, "error": "internal_error"}, status=500)
     return JsonResponse(_turn_json(turn))
+
+
+@csrf_exempt
+@require_POST
+def converse_text(request):
+    return _json_turn(request, "text", "handle_text")
 
 
 @csrf_exempt
 @require_POST
 def event(request):
-    import json
-
-    try:
-        payload = json.loads(request.body or b"{}")
-        event_name = str(payload.get("event", "")).strip().upper()
-        session = str(payload.get("session", "default"))[:64]
-    except (json.JSONDecodeError, AttributeError):
-        return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
-    try:
-        turn = services.get_pipeline().handle_event(event_name, session)
-    except Exception:
-        logger.exception("event failed")
-        return JsonResponse({"ok": False, "error": "internal_error"}, status=500)
-    return JsonResponse(_turn_json(turn))
+    return _json_turn(request, "event", "handle_event", normalize=lambda v: v.strip().upper())
 
 
 @require_GET
@@ -137,8 +127,9 @@ def health(request):
             "ok": True,
             "llm": {
                 "provider": pipeline.llm.name,
-                "model": getattr(pipeline.llm, "model", ""),
+                "model": pipeline.llm.model,
                 "key_configured": getattr(pipeline.llm, "key_configured", True),
+                "fallback": pipeline.fallback_llm.label if pipeline.fallback_llm else None,
             },
             "stt": {"backend": pipeline.stt.name, "model": getattr(pipeline.stt, "model_name", "")},
             "tts": {"backend": pipeline.tts.name, "voice": getattr(pipeline.tts, "voice_name", "")},

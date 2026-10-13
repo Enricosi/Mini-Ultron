@@ -6,6 +6,8 @@ server without edits. See cerebro/.env.example for the full list.
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent  # .../cerebro
 REPO_DIR = BASE_DIR.parent
 
@@ -37,11 +39,17 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def env_int(name: str, default: int) -> int:
-    return int(env(name, str(default)))
+    try:
+        return int(env(name, str(default)))
+    except ValueError:
+        raise ImproperlyConfigured(f"{name} must be an integer, got {env(name)!r}") from None
 
 
 def env_float(name: str, default: float) -> float:
-    return float(env(name, str(default)))
+    try:
+        return float(env(name, str(default)))
+    except ValueError:
+        raise ImproperlyConfigured(f"{name} must be a number, got {env(name)!r}") from None
 
 
 # --- Django basics -----------------------------------------------------------
@@ -49,7 +57,7 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-only-insecure-key-change-on-the-serve
 DEBUG = env_bool("DJANGO_DEBUG", False)
 # The robot reaches this server over the LAN by IP/hostname, so accept any Host header.
 # CEREBRO is a LAN-only service; do not expose it to the internet as-is.
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "*").split(",") if h.strip()]
 
 INSTALLED_APPS = ["brain"]
 MIDDLEWARE = ["django.middleware.common.CommonMiddleware"]
@@ -69,14 +77,23 @@ ULTRON_DATA_DIR = Path(env("ULTRON_DATA_DIR", str(BASE_DIR / "var")))
 os.environ.setdefault("HF_HOME", str(ULTRON_DATA_DIR / "hf"))
 
 # --- LLM ---------------------------------------------------------------------
-# Provider presets: "groq" (default), "ollama" (later, local), "openai_compat"
-# (any OpenAI-style endpoint), "fake" (offline canned replies, for tests/dev).
+# Provider presets (brain/llm.py): "groq" (default), "meta" (Muse Spark), "ollama",
+# "openai_compat" (any OpenAI-style endpoint, needs LLM_BASE_URL), "fake" (offline, tests/dev).
+# Each provider reads its own key variable (GROQ_API_KEY, MODEL_API_KEY for meta);
+# LLM_API_KEY overrides it. See docs/providers.md.
 LLM_PROVIDER = env("LLM_PROVIDER", "groq")
 LLM_MODEL = env("LLM_MODEL", "openai/gpt-oss-120b")
-# On a 429 (rate limit) retry once with this model, which has its own quota. Empty = off.
-LLM_FALLBACK_MODEL = env("LLM_FALLBACK_MODEL", "openai/gpt-oss-20b")
 LLM_BASE_URL = env("LLM_BASE_URL", "")  # empty = provider default
-LLM_API_KEY = env("LLM_API_KEY", "") or env("GROQ_API_KEY", "")
+LLM_API_KEY = env("LLM_API_KEY", "")
+# One explicit fallback, tried when the main LLM fails (timeout, 429, HTTP error, invalid
+# reply, missing key). Empty model = no fallback. Provider defaults to the main one; the
+# default model only applies to groq (a gpt-oss id means nothing to other providers).
+LLM_FALLBACK_PROVIDER = env("LLM_FALLBACK_PROVIDER", "") or LLM_PROVIDER
+LLM_FALLBACK_MODEL = env(
+    "LLM_FALLBACK_MODEL", "openai/gpt-oss-20b" if LLM_FALLBACK_PROVIDER == "groq" else ""
+)
+LLM_FALLBACK_BASE_URL = env("LLM_FALLBACK_BASE_URL", "")
+LLM_FALLBACK_API_KEY = env("LLM_FALLBACK_API_KEY", "")
 LLM_TIMEOUT_S = env_float("LLM_TIMEOUT_S", 20.0)
 LLM_TEMPERATURE = env_float("LLM_TEMPERATURE", 0.8)
 LLM_MAX_TOKENS = env_int("LLM_MAX_TOKENS", 400)
@@ -121,6 +138,8 @@ ULTRON_ALLOW_MOVEMENT = env_bool("ULTRON_ALLOW_MOVEMENT", False)
 ULTRON_PERSONALITY = env("ULTRON_PERSONALITY", "ultron")  # see brain/personalities/
 ULTRON_HISTORY_TURNS = env_int("ULTRON_HISTORY_TURNS", 4)  # fewer turns = fewer tokens/minute
 ULTRON_MAX_REPLY_CHARS = env_int("ULTRON_MAX_REPLY_CHARS", 300)
+ULTRON_MAX_BODY_BYTES = env_int("ULTRON_MAX_BODY_BYTES", 2 * 1024 * 1024)  # ~65 s of 16 kHz audio; firmware caps utterances at 12 s
+ULTRON_MIN_AUDIO_S = env_float("ULTRON_MIN_AUDIO_S", 0.3)  # shorter than this is a click, not speech
 ULTRON_SAVE_DEBUG_AUDIO = env_bool("ULTRON_SAVE_DEBUG_AUDIO", True)
 ULTRON_PRELOAD = env_bool("ULTRON_PRELOAD", True)  # load STT/TTS models at server start
 
@@ -130,7 +149,7 @@ LOGGING = {
     "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
     "loggers": {
-        "brain": {"handlers": ["console"], "level": env("ULTRON_LOG_LEVEL", "INFO"), "propagate": False},
+        "brain": {"handlers": ["console"], "level": env("ULTRON_LOG_LEVEL", "INFO").upper(), "propagate": False},
         "django.request": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 }

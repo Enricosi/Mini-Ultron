@@ -1,9 +1,12 @@
 """
-LLM backends. One generic OpenAI-compatible client serves Groq today and Ollama (or
-anything else that speaks /v1/chat/completions) later: switching is settings only.
+LLM backends. One generic OpenAI-compatible client serves Groq, Meta (Muse Spark),
+Ollama and any other /v1/chat/completions endpoint: switching is settings only
+(LLM_PROVIDER / LLM_MODEL, see docs/providers.md).
 
 The backend returns the raw model text (expected to be JSON); validation into a safe
 Behavior lives in schemas.py, so a misbehaving model can never reach the robot.
+Falling back to a second provider is the pipeline's job (pipeline.py), not this module's:
+a backend either answers or raises LLMError with a `kind` saying why.
 """
 import json
 import logging
@@ -15,10 +18,13 @@ from .schemas import BEHAVIOR_JSON_SCHEMA
 
 logger = logging.getLogger("brain.llm")
 
+# key_env: the provider's own API-key variable name (LLM_API_KEY overrides it); empty =
+# the provider needs no key. Adding an OpenAI-style provider is one entry here.
 PROVIDER_PRESETS = {
-    "groq": {"base_url": "https://api.groq.com/openai/v1", "token_param": "max_completion_tokens"},
-    "ollama": {"base_url": "http://localhost:11434/v1", "token_param": "max_tokens"},
-    "openai_compat": {"base_url": "", "token_param": "max_tokens"},
+    "groq": {"base_url": "https://api.groq.com/openai/v1", "token_param": "max_completion_tokens", "key_env": "GROQ_API_KEY"},
+    "meta": {"base_url": "https://api.meta.ai/v1", "token_param": "max_completion_tokens", "key_env": "MODEL_API_KEY"},
+    "ollama": {"base_url": "http://localhost:11434/v1", "token_param": "max_tokens", "key_env": ""},
+    "openai_compat": {"base_url": "", "token_param": "max_tokens", "key_env": ""},
 }
 
 # Model families known to accept an OpenAI-style "reasoning_effort" field (hybrid
@@ -32,14 +38,28 @@ def _supports_reasoning_effort(model: str) -> bool:
 
 
 class LLMError(RuntimeError):
-    """The LLM call failed (network, timeout, HTTP error, empty answer)."""
+    """The LLM call failed. `kind` says why, for logs and the eval report:
+    config | auth | timeout | network | rate_limit | http | invalid_response."""
+
+    def __init__(self, message: str, kind: str = "http"):
+        super().__init__(message)
+        self.kind = kind
 
 
 class LLMBackend:
     name = "base"
+    model = ""
+    last_usage: dict = {}
 
     def complete(self, messages: list[dict]) -> str:  # pragma: no cover - interface
         raise NotImplementedError
+
+    def close(self) -> None:
+        pass
+
+    @property
+    def label(self) -> str:
+        return f"{self.name}/{self.model}" if self.model else self.name
 
 
 class _HTTPStatusError(Exception):
@@ -62,16 +82,14 @@ class OpenAICompatLLM(LLMBackend):
         structured: str = "json_schema",
         reasoning_effort: str = "",
         client: httpx.Client | None = None,
-        fallback_model: str = "",
     ):
         preset = PROVIDER_PRESETS.get(provider, PROVIDER_PRESETS["openai_compat"])
         self.name = provider
         self.model = model
-        # Used when the main model hits its rate limit (429): each model has its own quota.
-        self.fallback_model = fallback_model if fallback_model != model else ""
         self.api_key = api_key
         self.base_url = (base_url or preset["base_url"]).rstrip("/")
         self.token_param = preset["token_param"]
+        self.key_env = preset["key_env"]
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.structured = structured
@@ -80,14 +98,17 @@ class OpenAICompatLLM(LLMBackend):
         self._client = client or httpx.Client(
             timeout=timeout_s, limits=httpx.Limits(keepalive_expiry=60.0)
         )
-        self.last_usage: dict = {}  # token counts of the last call, for latency debugging
+        self.last_usage: dict = {}  # token counts of the last call, for logs and eval cost
 
     @property
     def key_configured(self) -> bool:
-        return bool(self.api_key)
+        return bool(self.api_key) or not self.key_env
 
-    def _payload(self, messages: list[dict], structured: str, model: str = "") -> dict:
-        model = model or self.model
+    def close(self) -> None:
+        self._client.close()
+
+    def _payload(self, messages: list[dict], structured: str) -> dict:
+        model = self.model
         payload = {
             "model": model,
             "messages": messages,
@@ -106,11 +127,11 @@ class OpenAICompatLLM(LLMBackend):
             payload["include_reasoning"] = False
         return payload
 
-    def _post(self, payload: dict, retry_429: bool = True) -> dict:
+    def _post(self, payload: dict) -> dict:
         if not self.base_url:
-            raise LLMError("LLM_BASE_URL is not configured")
-        if self.name == "groq" and not self.api_key:
-            raise LLMError("GROQ_API_KEY is not set")
+            raise LLMError("LLM_BASE_URL is not configured", "config")
+        if not self.key_configured:
+            raise LLMError(f"{self.key_env} is not set", "auth")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -119,43 +140,36 @@ class OpenAICompatLLM(LLMBackend):
             try:
                 response = self._client.post(url, json=payload, headers=headers)
             except httpx.TimeoutException:
-                raise LLMError(f"LLM timed out after {self.timeout_s:.0f}s") from None
+                raise LLMError(f"LLM timed out after {self.timeout_s:.0f}s", "timeout") from None
             except httpx.HTTPError as exc:
-                raise LLMError(f"LLM network error: {type(exc).__name__}") from None
-            if (response.status_code == 429 and retry_429) or response.status_code >= 500:
-                if attempt == 1:
-                    logger.warning("LLM HTTP %s, retrying once", response.status_code)
-                    time.sleep(0.5)
-                    continue
+                raise LLMError(f"LLM network error: {type(exc).__name__}", "network") from None
+            if (response.status_code == 429 or response.status_code >= 500) and attempt == 1:
+                logger.warning("%s/%s HTTP %s, retrying once", self.name, self.model, response.status_code)
+                time.sleep(0.5)
+                continue
             if response.status_code >= 400:
                 raise _HTTPStatusError(response.status_code, response.text[:300])
             try:
                 return response.json()
             except json.JSONDecodeError:
-                raise LLMError("LLM returned a non-JSON HTTP body") from None
+                raise LLMError("LLM returned a non-JSON HTTP body", "invalid_response") from None
         raise LLMError("LLM request failed")  # pragma: no cover
 
-    def _request(self, messages: list[dict], model: str, retry_429: bool) -> dict:
+    def _request(self, messages: list[dict]) -> dict:
         try:
-            return self._post(self._payload(messages, self.structured, model), retry_429)
+            return self._post(self._payload(messages, self.structured))
         except _HTTPStatusError as exc:
             if exc.status == 400 and self.structured == "json_schema":
-                logger.warning("LLM rejected json_schema (%s); retrying with json_object", exc.body[:120])
-                return self._post(self._payload(messages, "json_object", model), retry_429)
+                logger.warning("%s rejected json_schema (%s); retrying with json_object", self.name, exc.body[:120])
+                return self._post(self._payload(messages, "json_object"))
             raise
 
     def complete(self, messages: list[dict]) -> str:
         try:
-            try:
-                data = self._request(messages, self.model, retry_429=not self.fallback_model)
-            except _HTTPStatusError as exc:
-                if exc.status == 429 and self.fallback_model:
-                    logger.warning("%s rate-limited (429); using fallback %s", self.model, self.fallback_model)
-                    data = self._request(messages, self.fallback_model, retry_429=True)
-                else:
-                    raise
+            data = self._request(messages)
         except _HTTPStatusError as exc:
-            raise LLMError(f"LLM HTTP {exc.status}: {exc.body[:200]}") from None
+            kind = {401: "auth", 403: "auth", 429: "rate_limit"}.get(exc.status, "http")
+            raise LLMError(f"LLM HTTP {exc.status}: {exc.body[:200]}", kind) from None
         usage = data.get("usage") or {}
         details = usage.get("completion_tokens_details") or {}
         self.last_usage = {
@@ -166,9 +180,9 @@ class OpenAICompatLLM(LLMBackend):
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError):
-            raise LLMError("LLM response has no choices[0].message.content") from None
+            raise LLMError("LLM response has no choices[0].message.content", "invalid_response") from None
         if not content or not str(content).strip():
-            raise LLMError("LLM returned an empty message")
+            raise LLMError("LLM returned an empty message", "invalid_response")
         return str(content)
 
 
@@ -176,6 +190,7 @@ class FakeLLM(LLMBackend):
     """Offline/test backend. Returns queued replies, or a canned villain line."""
 
     name = "fake"
+    model = "canned"
 
     def __init__(self, replies: list[str] | None = None):
         self.replies = list(replies or [])

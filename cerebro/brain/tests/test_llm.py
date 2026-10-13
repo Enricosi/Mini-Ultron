@@ -135,32 +135,66 @@ class FakeLLMTests(SimpleTestCase):
         self.assertEqual(len(llm.calls), 3)
 
 
-class FallbackModelTests(SimpleTestCase):
-    def test_rate_limit_switches_to_fallback_model_without_waiting(self):
-        models = []
+class ProviderTests(SimpleTestCase):
+    def test_meta_preset_request_shape(self):
+        seen = {}
 
         def handler(request):
-            model = json.loads(request.content)["model"]
-            models.append(model)
-            if model == "openai/gpt-oss-120b":
-                return httpx.Response(429, json={"error": {"message": "TPM limit"}})
+            seen["url"] = str(request.url)
+            seen["auth"] = request.headers["authorization"]
+            seen["json"] = json.loads(request.content)
             return httpx.Response(200, json=ok_body())
 
-        llm = make(handler, model="openai/gpt-oss-120b", fallback_model="openai/gpt-oss-20b")
-        self.assertEqual(llm.complete(MESSAGES), REPLY)
-        self.assertEqual(models, ["openai/gpt-oss-120b", "openai/gpt-oss-20b"])  # no same-model retry
+        make(handler, provider="meta", model="muse-spark-1.3", reasoning_effort="low").complete(MESSAGES)
+        self.assertEqual(seen["url"], "https://api.meta.ai/v1/chat/completions")
+        self.assertEqual(seen["auth"], "Bearer test-key-not-real")
+        self.assertEqual(seen["json"]["model"], "muse-spark-1.3")
+        self.assertIn("max_completion_tokens", seen["json"])
+        self.assertNotIn("reasoning_effort", seen["json"])  # only sent to models known to accept it
 
-    def test_no_fallback_configured_keeps_the_retry_then_fails(self):
+    def test_missing_key_names_the_providers_variable(self):
+        def handler(request):  # pragma: no cover
+            raise AssertionError("no request expected")
+
+        with self.assertRaisesRegex(LLMError, "MODEL_API_KEY") as ctx:
+            make(handler, provider="meta", api_key="").complete(MESSAGES)
+        self.assertEqual(ctx.exception.kind, "auth")
+
+    def test_keyless_providers_need_no_key(self):
+        make(lambda r: httpx.Response(200, json=ok_body()), provider="ollama", api_key="").complete(MESSAGES)
+
+    def test_error_kinds(self):
+        cases = {401: "auth", 429: "rate_limit", 404: "http", 400: "http"}
+        for status, kind in cases.items():
+            with self.assertRaises(LLMError) as ctx:
+                make(lambda r, st=status: httpx.Response(st, json={}), structured="none").complete(MESSAGES)
+            self.assertEqual(ctx.exception.kind, kind, status)
+
+    def test_persistent_server_error_is_retried_once_then_http(self):
         calls = []
 
         def handler(request):
             calls.append(1)
-            return httpx.Response(429, json={"error": {"message": "TPM limit"}})
+            return httpx.Response(503, json={})
 
-        with self.assertRaisesRegex(LLMError, "429"):
+        with self.assertRaises(LLMError) as ctx:
             make(handler).complete(MESSAGES)
-        self.assertEqual(len(calls), 2)
+        self.assertEqual((len(calls), ctx.exception.kind), (2, "http"))
 
-    def test_fallback_equal_to_main_model_is_ignored(self):
-        llm = make(lambda r: httpx.Response(200, json=ok_body()), model="m", fallback_model="m")
-        self.assertEqual(llm.fallback_model, "")
+    def test_timeout_and_empty_kinds(self):
+        def timeout(request):
+            raise httpx.ReadTimeout("slow", request=request)
+
+        with self.assertRaises(LLMError) as ctx:
+            make(timeout).complete(MESSAGES)
+        self.assertEqual(ctx.exception.kind, "timeout")
+        with self.assertRaises(LLMError) as ctx:
+            make(lambda r: httpx.Response(200, json=ok_body(""))).complete(MESSAGES)
+        self.assertEqual(ctx.exception.kind, "invalid_response")
+
+    def test_usage_is_recorded(self):
+        body = ok_body() | {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+        llm = make(lambda r: httpx.Response(200, json=body))
+        llm.complete(MESSAGES)
+        self.assertEqual(llm.last_usage["prompt"], 10)
+        self.assertEqual(llm.last_usage["completion"], 5)

@@ -56,8 +56,46 @@ class PipelineTests(SimpleTestCase):
     def test_llm_failure_uses_fallback_with_glitch_face(self):
         turn = make(llm=FakeLLM([LLMError("down")])).handle_audio(utterance())
         self.assertEqual(turn.behavior.face, "GLITCH")
-        self.assertTrue(any("fallback" in w for w in turn.warnings))
+        self.assertTrue(turn.degraded)
+        self.assertEqual(turn.llm_used, "")
+        self.assertTrue(any("llm_error" in w for w in turn.warnings))
         self.assertIsNotNone(turn.audio_id)  # it still speaks
+
+    def test_canned_turn_is_not_remembered(self):
+        p = make(llm=FakeLLM([LLMError("down")]))
+        p.handle_text("hola", "s")
+        self.assertEqual(p.history.messages("s"), [])
+
+    def test_fallback_llm_answers_when_main_fails(self):
+        for failure in (LLMError("down", "timeout"), "I am not JSON", LLMError("no key", "auth")):
+            fallback = FakeLLM([behavior_json(text="Respuesta de reserva.")])
+            p = make(llm=FakeLLM([failure]), fallback_llm=fallback)
+            turn = p.handle_text("hola", "s")
+            self.assertEqual(turn.behavior.text, "Respuesta de reserva.")
+            self.assertFalse(turn.degraded)
+            self.assertEqual(turn.llm_used, "fake/canned")
+            self.assertTrue(any(w.startswith("llm_error") for w in turn.warnings))  # never silent
+            self.assertEqual(len(p.history.messages("s")), 2)  # a real reply is remembered
+
+    def test_fallback_not_called_when_main_succeeds(self):
+        fallback = FakeLLM()
+        make(fallback_llm=fallback).handle_text("hola")
+        self.assertEqual(fallback.calls, [])
+
+    def test_both_llms_failing_ends_in_the_canned_line(self):
+        p = make(llm=FakeLLM([LLMError("a")]), fallback_llm=FakeLLM([LLMError("b")]))
+        turn = p.handle_text("hola")
+        self.assertTrue(turn.degraded)
+        self.assertEqual(turn.behavior.face, "GLITCH")
+        self.assertEqual(len([w for w in turn.warnings if w.startswith("llm_error")]), 2)
+
+    def test_fallback_reply_still_goes_through_the_movement_gate(self):
+        p = make(llm=FakeLLM([LLMError("x")]), fallback_llm=FakeLLM([behavior_json(movement="FORWARD")]))
+        self.assertEqual(p.handle_text("avanza").behavior.movement, "NONE")
+
+    def test_every_turn_has_an_interaction_id(self):
+        p = make()
+        self.assertNotEqual(p.handle_text("a").id, p.handle_text("b").id)
 
     def test_garbage_llm_output_uses_fallback(self):
         turn = make(llm=FakeLLM(["I am not JSON"])).handle_audio(utterance())
