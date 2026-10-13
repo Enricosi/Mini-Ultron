@@ -8,7 +8,12 @@ Status legend: **VERIFIED** (measured/confirmed physically) · **IMPLEMENTED** (
 exists) · **COMPILES** · **UPLOADED** · **PHYSICALLY TESTED** (actually run on real
 hardware) · **UNTESTED** · **PLANNED** · **DEFERRED** · **NEEDS VERIFICATION**.
 
-Last reviewed: 2026-10-03. **2026-10-03: ESP32-side electronics moved from the breadboard to a
+Last reviewed: 2026-10-13. **2026-10-13: test session, everything pending passed** —
+`eval_personality` vs real Groq, no-dance-by-voice, `MOVE:FWD` without the veto, floor test of
+brain-driven movement. **ESP32 now runs a NON-DEFAULT build with brain movement ON, kept on at
+Enrico's request.** MPU6050/HC-SR04 physically removed; shield 5V rail reads 5V (static). Details
+in "Immediate next step".
+**2026-10-03: ESP32-side electronics moved from the breadboard to a
 perfboard** (Enrico, soldered). **Same pins** as the breadboard (pin table below still valid);
 Enrico re-tested everything after the move and it works (VERIFIED). Breadboard-era wiring notes
 in this file are history.
@@ -1100,7 +1105,21 @@ No existing safety behavior was weakened.
 
 ## Immediate next step
 
-**NEXT SESSION — start here (written 2026-10-02):**
+**NEXT SESSION — start here (written 2026-10-13):**
+State: the whole 2026-10-02 test list below is done and passed (eval, no-dance-by-voice,
+`MOVE:FWD` without veto, MPU6050/HC-SR04 removed, floor test). **The ESP32 runs a NON-DEFAULT
+build with brain movement ON** (`-DMINI_ULTRON_BRAIN_MOVEMENT=1`, Enrico wants it kept on); the
+Pico runs the source default (ultrasonic 0); server `movement_allowed=1`. Django unchanged since
+2026-09-29 (deployed == local). Nothing hardware-side is pending. Open items, none urgent:
+1. **Piper GPL legal review** — still blocks a commercial/open-source release only.
+2. **5V rail under load** — 5V static, re-measure with motors + speaker running before ever
+   powering the ESP32 from the shield.
+3. Small Django polish if Enrico wants it: add dance cases (an order + a near-miss) to
+   `eval_personality`'s `CASES`; the "seria" (sad user) case picked the SLEEPING face, odd but
+   harmless — a prompt tweak if it bothers him.
+4. Flash is 92%: more animations → LittleFS (`MINI_ULTRON_ENABLE_ANIM_FS`) or compression.
+
+**As of 2026-10-02 — SUPERSEDED by the 2026-10-13 list above (all items done):**
 State: both boards run the source-default build (IMU 0, ultrasonic 0, brain movement 0), checked
 over serial 2026-10-02. Django deployed 2026-09-29, unchanged since. Deploy =
 `rsync -a --delete --exclude var/ --exclude .env --exclude __pycache__/ cerebro/
@@ -1138,10 +1157,10 @@ restart cerebro'`.
    Enrico asks; with no ultrasonic, the floor test needs extra care). Flash is 92-93%: more
    animations → LittleFS (`MINI_ULTRON_ENABLE_ANIM_FS`) or compression. Adding a dance: convert →
    register in `anim_library.cpp` → add its UPPERCASE name to `schemas.ANIMATIONS` → mention it in
-   `personalities/ultron.py`. Still open from before: floor test, Piper GPL legal review, 5V-rail
-   measurement.
+   `personalities/ultron.py`. (Floor test and 5V measurement since done; Piper GPL review still
+   open.)
 
-**As of 2026-09-29 — SUPERSEDED by the 2026-10-02 list above:** dance-by-voice done and passed;
+**As of 2026-09-29 — SUPERSEDED by the 2026-10-02 list:** dance-by-voice done and passed;
 false jolts (item 1 then) made moot by dropping the IMU.
 
 **As of 2026-09-25 — SUPERSEDED by the 2026-09-29 list above** (the build was uploaded;
@@ -1218,7 +1237,7 @@ conversation/insults/"detente"->NONE.
   Whisper `initial_prompt` with the command vocabulary (`STT_INITIAL_PROMPT`) plus a filter for transcripts
   that echo most of that prompt (short real commands like "Avanza" are never dropped; unit-tested). After it,
   Enrico reported the commands work; a systematic measurement of misheard commands was not made.
-- **Not done yet: the floor test.** Preconditions Enrico must confirm each time: robot on the floor with
+- **Floor test DONE 2026-10-13** (Enrico: "funciona"; see "Immediate next step"). Preconditions Enrico must confirm each time: robot on the floor with
   >= 1 m free (there is NO cliff/edge sensor, and since 2026-10-02 NO ultrasonic either — nothing stops it before a wall), ESP32 power that
   doesn't depend on the laptop (or a long USB cable), Enrico beside it with a hand near the Pico's battery
   switch. Emergency stops: the Pico's battery switch, `MOTION:STOP` over serial, or unplugging the ESP32
