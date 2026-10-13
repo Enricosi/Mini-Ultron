@@ -1125,7 +1125,12 @@ restart cerebro'`.
    `/dev/ttyACM0`, ESP32 `/dev/ttyACM1`.
 4. Enrico physically removes the MPU6050 and HC-SR04 (if not done yet) — firmware no longer
    touches GPIO13/14 (ESP32) or GP4/GP5 (Pico).
-5. Optional/later: brain movement stays OFF (re-flash with `-DMINI_ULTRON_BRAIN_MOVEMENT=1` only if
+5. **2026-10-13: brain movement is ON for the floor test** (Enrico asked: "tienes q desbloquear
+   el movimiento"). The ESP32 now runs a **NON-DEFAULT build**, `-DMINI_ULTRON_BRAIN_MOVEMENT=1`
+   (source unchanged; verified: the binary has the `[motion] start` path and lacks the
+   "intent ignored" string). The server was already `movement_allowed=1` (`/api/health`, boot
+   log). Floor test not done yet. A plain source-tree re-flash turns voice movement OFF again.
+   Previous text: Optional/later: brain movement stays OFF (re-flash with `-DMINI_ULTRON_BRAIN_MOVEMENT=1` only if
    Enrico asks; with no ultrasonic, the floor test needs extra care). Flash is 92-93%: more
    animations → LittleFS (`MINI_ULTRON_ENABLE_ANIM_FS`) or compression. Adding a dance: convert →
    register in `anim_library.cpp` → add its UPPERCASE name to `schemas.ANIMATIONS` → mention it in
