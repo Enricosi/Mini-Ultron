@@ -181,3 +181,16 @@ class PipelineTests(SimpleTestCase):
         make(llm=llm).handle_text("hola")
         msgs = llm.calls[0]
         self.assertEqual((msgs[0]["role"], msgs[-1]["role"], msgs[-1]["content"]), ("system", "user", "hola"))
+
+
+class HistoryTests(SimpleTestCase):
+    def test_turns_and_sessions_are_bounded(self):
+        h = History(max_turns=2, max_sessions=2)
+        for i in range(5):
+            h.add("a", f"u{i}", Behavior(text="x"))
+        self.assertEqual(len(h.messages("a")), 4)  # 2 turns
+        self.assertEqual(h.messages("a")[0]["content"], "u3")
+        h.add("b", "u", Behavior(text="x"))
+        h.add("c", "u", Behavior(text="x"))  # evicts the least recently used session
+        self.assertEqual(h.messages("a"), [])
+        self.assertEqual(len(h.messages("c")), 2)

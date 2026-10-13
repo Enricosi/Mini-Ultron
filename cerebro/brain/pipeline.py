@@ -13,7 +13,7 @@ import logging
 import threading
 import time
 import uuid
-from collections import OrderedDict, defaultdict, deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from . import audio_utils
@@ -60,15 +60,18 @@ class AudioStore:
 
 
 class History:
-    """Rolling short-term memory per session, in RAM (v0.1: no persistence)."""
+    """Rolling short-term memory per session, in RAM (no persistence). The number of
+    sessions is bounded too: X-Session-Id is client-supplied, so old ones are dropped."""
 
-    def __init__(self, max_turns: int = 6):
-        self._turns = defaultdict(lambda: deque(maxlen=max_turns))
+    def __init__(self, max_turns: int = 6, max_sessions: int = 32):
+        self.max_turns = max_turns
+        self.max_sessions = max_sessions
+        self._turns: OrderedDict[str, deque] = OrderedDict()
         self._lock = threading.Lock()
 
     def messages(self, session: str) -> list[dict]:
         with self._lock:
-            turns = list(self._turns[session])
+            turns = list(self._turns.get(session, ()))
         out: list[dict] = []
         for user_text, behavior_json in turns:
             out.append({"role": "user", "content": user_text})
@@ -77,7 +80,11 @@ class History:
 
     def add(self, session: str, user_text: str, behavior: Behavior) -> None:
         with self._lock:
-            self._turns[session].append((user_text, json.dumps(behavior.to_dict(), ensure_ascii=False)))
+            turns = self._turns.setdefault(session, deque(maxlen=self.max_turns))
+            self._turns.move_to_end(session)
+            turns.append((user_text, json.dumps(behavior.to_dict(), ensure_ascii=False)))
+            while len(self._turns) > self.max_sessions:
+                self._turns.popitem(last=False)
 
 
 @dataclass
