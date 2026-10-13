@@ -1104,8 +1104,16 @@ over serial 2026-10-02. Django deployed 2026-09-29, unchanged since. Deploy =
 `rsync -a --delete --exclude var/ --exclude .env --exclude __pycache__/ cerebro/
 <user>@<server>:~/mini-ultron/cerebro/` + `ssh <user>@<server> 'systemctl --user
 restart cerebro'`.
-1. **Run `eval_personality`** against real Groq (the 2026-09-25 prompt changes + the 2026-09-29
-   `animation` rule have never been re-evaluated). Pure software, no hardware needed.
+1. ~~**Run `eval_personality`** against real Groq~~ — **DONE 2026-10-13** on the home-lab
+   (deployed code == local, rsync dry-run clean). `gpt-oss-120b`, all 11 turns OK: replies 12-18
+   words (new 1-2 sentence limit holds), faces now varied (SPEAKING/ANGRY/SUSPICIOUS/SURPRISED/
+   SLEEPING — the 2026-09-25 face-variety fix works), `fisica_valida`→FORWARD,
+   `fisica_invalida`→NONE, animation NONE everywhere. The eval set has no dance case, so the
+   animation rule was checked ad hoc (same prompt/model + `apply_animation_policy`): "baila la
+   calabaza"→CALABAZA; "¿te gusta bailar?", "todos bailaron…", "me compré una calabaza"→NONE.
+   **Gotcha:** Groq on_demand caps at 8000 tokens/min and each call is ~2000 (system prompt ~1800),
+   so the default `--delay 1.5` hits 429s after ~4 calls — use `--model openai/gpt-oss-120b
+   --delay 20`. The 20b/qwen candidates weren't re-run for that reason (not production).
 2. **Voice check: an unrelated phrase must NOT dance** (text path + unit tests say so; never tried
    by voice).
 3. **`MOVE:FWD` without the obstacle veto** → expect `OK`, wheels in the air, only with Enrico's go
