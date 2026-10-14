@@ -14,7 +14,7 @@ tests pass) · **COMPILES** · **NOT VERIFIED**.
 |---|---|
 | ESP32-S3: SSD1331 face (9 states + `calabaza` animation), INMP441 mic, DAC/amp + 8Ω speaker (shared I2S clocks GPIO9/10, mic SD=11, amp DIN=12), UART to Pico (RX=17, TX=18, 9600 baud), HTTP to CEREBRO | VERIFIED on the perfboard (2026-10-03) |
 | Pico W: 4 Mecanum motors, neck servo (shield header), WS2812 emotion LEDs, line tracker (reported only), comms watchdog | VERIFIED |
-| CEREBRO on the home-lab server: faster-whisper `small`, Piper `es_ES-davefx-medium`, Groq gpt-oss-120b (+20b fallback) | VERIFIED in daily use |
+| CEREBRO on the home-lab server: faster-whisper `small`, Piper `es_ES-davefx-medium`, Meta Muse Spark 1.3 (Groq gpt-oss-20b fallback) | VERIFIED in daily use |
 | Voice-driven movement (fixed 0.8 s slow bursts) | VERIFIED on the floor 2026-10-13 |
 | Dance by voice (`calabaza`) | VERIFIED |
 
@@ -41,10 +41,10 @@ detection**: movement tests need clear floor and Enrico beside the robot (`safet
 
 ## CEREBRO
 
-- Code in this repo has: Meta provider (works; Muse measured), explicit fallback, startup config validation, interaction
-  ids in logs, expanded `eval_personality`. **The server still runs the previous deployed code**
-  (`/api/health` lacks the `fallback` field) until it is redeployed — `development.md` →
-  "Deploying". The server's existing `.env` stays valid (new variables are optional).
+- **Deployed 2026-10-13** with Meta provider, explicit fallback, startup config validation,
+  interaction ids in logs, expanded `eval_personality`. Server brain: `meta/muse-spark-1.3`
+  (`reasoning_effort=minimal`, `LLM_MAX_TOKENS=1500`), fallback `groq/openai/gpt-oss-20b`. Previous `.env`
+  saved on the server as `.env.bak-groq`. Expect ~5-6 s from end of speech to reply.
 - Server settings in effect: `ULTRON_ALLOW_MOVEMENT=1` (so both movement gates are on).
 - Latency: speech-end to playback ~1.7–3.1 s. Groq's free tier is 8000 tokens/min per model and
   one turn costs ~2300 prompt tokens, so sustained conversation hits 429s; the 20b fallback has
@@ -54,7 +54,7 @@ detection**: movement tests need clear floor and Enrico beside the robot (`safet
 
 Muse Spark 1.3 smoke test done (`docs/eval/2026-10-13_muse-smoke.md`, 8 cases): safe and in
 character, but 5.9 s p50 at `reasoning_effort=minimal` (20 s by default) vs ~0.8 s on Groq, ~9x the
-cost. **Decision: Groq gpt-oss-120b stays.** The Groq baseline could not be re-run the same day (free
+cost. **Decision (Enrico's call, 2026-10-13): Muse Spark 1.3 is now the brain on the server**, with Groq gpt-oss-20b as fallback (Groq 120b remains the fast baseline). The Groq baseline could not be re-run the same day (free
 daily cap of 200,000 tokens exhausted by the evals). Groq free tier ≈ 85 turns/day: if the robot is
 used a lot, the 20b fallback shares the problem on its own quota. `MODEL_API_KEY` is set in the
 repo-root `.env` on the dev laptop only (gitignored). See `providers.md`.
@@ -94,7 +94,7 @@ repo-root `.env` on the dev laptop only (gitignored). See `providers.md`.
 
 ## Next steps
 
-1. Redeploy CEREBRO to the server (Enrico's go; it restarts the service).
-2. Put a Meta `MODEL_API_KEY` in `cerebro/.env`, run the comparison with `--runs 3`, decide Muse vs gpt-oss.
+1. Talk to Muse for a while; if the personality disappoints, run `eval_personality --runs 3` on both and compare the appendix.
+2. Optional: detect empty replies caused by reasoning eating `LLM_MAX_TOKENS` and say so in the log.
 3. Remove the temporary `ufw` rule for port 8000 on the dev laptop if still there (see history).
 4. Legal review of Piper before any distribution.

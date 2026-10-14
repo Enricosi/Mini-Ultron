@@ -66,11 +66,15 @@ LLM_MAX_TOKENS=1500
 LLM_FALLBACK_REASONING_EFFORT=low   # the fallback has its own scale (Groq gpt-oss: low|medium|high)
 ```
 
-Conclusion for V1: **keep Groq gpt-oss-120b as the brain.** A 6 s wait before every spoken reply
-breaks a voice conversation; Muse's replies were good but not better enough to pay for that. Reopen
-if Meta offers a faster tier, or if Groq's daily token cap becomes the actual bottleneck (then Muse
-is a sensible fallback or main). Eight cases is a smoke test, not a ranking: personality quality
-was not compared side by side.
+Decision (2026-10-13): **Muse Spark 1.3 is the brain on Enrico's server** (his call: he likes the
+replies and the ~6 s wait does not matter to him; buyers will bring their own model anyway).
+Groq gpt-oss-20b is the explicit fallback. gpt-oss-120b on Groq is still the faster option
+(~0.8 s) and the documented baseline. Eight cases is a smoke test, not a ranking: personality quality
+was not compared side by side. The pre-Muse server `.env` is kept on the server as
+`~/mini-ultron/cerebro/.env.bak-groq`.
+
+Server settings in effect: `LLM_PROVIDER=meta`, `LLM_MODEL=muse-spark-1.3`, `LLM_REASONING_EFFORT=minimal`,
+`LLM_MAX_TOKENS=1500`, `LLM_TIMEOUT_S=40`, fallback `groq` / `openai/gpt-oss-20b` / effort `low`.
 
 ## Fallback (explicit, one level)
 
