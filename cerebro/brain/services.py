@@ -27,6 +27,7 @@ def build_llm():
         settings.LLM_MODEL,
         checks.main_key(settings, os.environ),
         settings.LLM_BASE_URL,
+        settings.LLM_REASONING_EFFORT,
     )
 
 
@@ -41,10 +42,11 @@ def build_fallback_llm():
         settings.LLM_FALLBACK_MODEL,
         checks.fallback_key(settings, os.environ),
         settings.LLM_FALLBACK_BASE_URL or settings.LLM_BASE_URL,
+        settings.LLM_FALLBACK_REASONING_EFFORT,
     )
 
 
-def _openai_compat(provider, model, api_key, base_url):
+def _openai_compat(provider, model, api_key, base_url, reasoning_effort):
     return OpenAICompatLLM(
         provider=provider,
         model=model,
@@ -54,7 +56,7 @@ def _openai_compat(provider, model, api_key, base_url):
         temperature=settings.LLM_TEMPERATURE,
         max_tokens=settings.LLM_MAX_TOKENS,
         structured=settings.LLM_STRUCTURED,
-        reasoning_effort=settings.LLM_REASONING_EFFORT,
+        reasoning_effort=reasoning_effort,
     )
 
 

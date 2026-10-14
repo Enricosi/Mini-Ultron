@@ -63,6 +63,7 @@ LLM_PROVIDER=meta
 LLM_MODEL=muse-spark-1.3
 LLM_REASONING_EFFORT=minimal
 LLM_MAX_TOKENS=1500
+LLM_FALLBACK_REASONING_EFFORT=low   # the fallback has its own scale (Groq gpt-oss: low|medium|high)
 ```
 
 Conclusion for V1: **keep Groq gpt-oss-120b as the brain.** A 6 s wait before every spoken reply

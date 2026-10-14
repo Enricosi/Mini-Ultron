@@ -12,7 +12,7 @@ def cfg(**over):
         LLM_FALLBACK_PROVIDER="groq", LLM_FALLBACK_MODEL="openai/gpt-oss-20b",
         LLM_FALLBACK_BASE_URL="", LLM_FALLBACK_API_KEY="",
         LLM_TIMEOUT_S=20.0, LLM_TEMPERATURE=0.8, LLM_MAX_TOKENS=400, LLM_STRUCTURED="json_schema",
-        LLM_REASONING_EFFORT="low", STT_BACKEND="fake", TTS_BACKEND="fake", TTS_FX="deep",
+        LLM_REASONING_EFFORT="low", LLM_FALLBACK_REASONING_EFFORT="low", STT_BACKEND="fake", TTS_BACKEND="fake", TTS_FX="deep",
         ULTRON_PERSONALITY="ultron", ULTRON_HISTORY_TURNS=4, ULTRON_MAX_REPLY_CHARS=300,
         LOGGING={"loggers": {"brain": {"level": "INFO"}}},
     )
@@ -69,6 +69,20 @@ class ConfigValidationTests(SimpleTestCase):
 
     def test_fake_provider_needs_nothing(self):
         checks.check_settings(cfg(LLM_PROVIDER="fake", LLM_MODEL="", LLM_FALLBACK_MODEL=""), {})
+
+
+class ServiceWiringTests(SimpleTestCase):
+    def test_main_and_fallback_get_their_own_reasoning_effort(self):
+        from django.test import override_settings
+
+        from brain import services
+
+        with override_settings(LLM_PROVIDER="meta", LLM_MODEL="muse-spark-1.3", LLM_API_KEY="k",
+                               LLM_REASONING_EFFORT="minimal", LLM_FALLBACK_PROVIDER="groq",
+                               LLM_FALLBACK_MODEL="openai/gpt-oss-20b", LLM_FALLBACK_API_KEY="g",
+                               LLM_FALLBACK_REASONING_EFFORT="low"):
+            self.assertEqual(services.build_llm().reasoning_effort, "minimal")
+            self.assertEqual(services.build_fallback_llm().reasoning_effort, "low")
 
 
 class EnvParsingTests(SimpleTestCase):

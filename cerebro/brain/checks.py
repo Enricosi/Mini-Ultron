@@ -69,6 +69,8 @@ def validate(settings, environ) -> list[str]:
         problems.append(f"LLM_STRUCTURED must be one of {list(STRUCTURED_MODES)}")
     if settings.LLM_REASONING_EFFORT not in REASONING_EFFORTS:
         problems.append(f"LLM_REASONING_EFFORT must be one of {list(REASONING_EFFORTS)}")
+    if settings.LLM_FALLBACK_REASONING_EFFORT not in REASONING_EFFORTS:
+        problems.append(f"LLM_FALLBACK_REASONING_EFFORT must be one of {list(REASONING_EFFORTS)}")
     if settings.STT_BACKEND not in STT_BACKENDS:
         problems.append(f"STT_BACKEND must be one of {list(STT_BACKENDS)}")
     if settings.TTS_BACKEND not in TTS_BACKENDS:
