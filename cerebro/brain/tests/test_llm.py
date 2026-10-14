@@ -150,7 +150,18 @@ class ProviderTests(SimpleTestCase):
         self.assertEqual(seen["auth"], "Bearer test-key-not-real")
         self.assertEqual(seen["json"]["model"], "muse-spark-1.3")
         self.assertIn("max_completion_tokens", seen["json"])
-        self.assertNotIn("reasoning_effort", seen["json"])  # only sent to models known to accept it
+        self.assertEqual(seen["json"]["reasoning_effort"], "low")
+        self.assertNotIn("include_reasoning", seen["json"])  # Meta answers 400 to it
+
+    def test_reasoning_effort_not_sent_to_unknown_models(self):
+        seen = {}
+
+        def handler(request):
+            seen["json"] = json.loads(request.content)
+            return httpx.Response(200, json=ok_body())
+
+        make(handler, model="llama-3.1-8b-instant", reasoning_effort="low").complete(MESSAGES)
+        self.assertNotIn("reasoning_effort", seen["json"])
 
     def test_missing_key_names_the_providers_variable(self):
         def handler(request):  # pragma: no cover

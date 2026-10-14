@@ -30,7 +30,7 @@ PROVIDER_PRESETS = {
 # Model families known to accept an OpenAI-style "reasoning_effort" field (hybrid
 # thinking/non-thinking models). Sending it to a model that doesn't understand it
 # risks a rejected request, so this stays an explicit allowlist, not a blind send.
-_REASONING_EFFORT_MODEL_PREFIXES = ("gpt-oss", "qwen")
+_REASONING_EFFORT_MODEL_PREFIXES = ("gpt-oss", "qwen", "muse")
 
 
 def _supports_reasoning_effort(model: str) -> bool:
@@ -124,7 +124,8 @@ class OpenAICompatLLM(LLMBackend):
             payload["response_format"] = {"type": "json_object"}
         if self.reasoning_effort and _supports_reasoning_effort(model):
             payload["reasoning_effort"] = self.reasoning_effort
-            payload["include_reasoning"] = False
+            if "muse" not in model:  # Meta rejects the field (HTTP 400); Groq needs it to hide reasoning
+                payload["include_reasoning"] = False
         return payload
 
     def _post(self, payload: dict) -> dict:

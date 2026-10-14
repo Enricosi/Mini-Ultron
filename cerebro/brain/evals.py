@@ -34,7 +34,7 @@ _ENGLISH = re.compile(r"\b(the|and|you|with|this|that|your|have|what|are)\b", re
 _VENDOR = re.compile(r"\b(openai|gpt|groq|meta ai|llama|muse|anthropic|claude|modelo de lenguaje|language model)\b", re.IGNORECASE)
 _DONT_KNOW = re.compile(
     r"\bno (lo )?s[eé]\b|\bni idea\b|\bno (tengo|puedo|poseo|dispongo)\b|\bno me (lo )?(dijiste|has dicho|contaste)\b"
-    r"|\bno (lo )?(vi|vigil|observ)|\bignoro\b|\bdesconozco\b|\bnadie (lo )?sabe\b|\bno (existe|ha ocurrido|ha pasado)\b",
+    r"|\bno (lo )?(vi|vigil|observ|registr)|\bignoro\b|\bdesconozco\b|\bnadie (lo )?sabe\b|\bno (existe|ha ocurrido|ha pasado)\b",
     re.IGNORECASE,
 )
 _HARDWARE_NUMBER = re.compile(r"\b\d{3,}\b|\b\d+\s*(µs|us|microseg\w*|ms|khz|hz|rpm|%|grados)\b", re.IGNORECASE)
@@ -180,7 +180,8 @@ CASES: tuple[Case, ...] = (
 
 
 def select_cases(name: str | None = None, category: str | None = None) -> list[Case]:
-    return [c for c in CASES if (not name or c.name == name) and (not category or c.category == category)]
+    names = set(name.split(",")) if name else None
+    return [c for c in CASES if (not names or c.name in names) and (not category or c.category == category)]
 
 
 # --- records & statistics ---------------------------------------------------------------

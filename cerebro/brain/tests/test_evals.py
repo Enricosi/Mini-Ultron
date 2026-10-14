@@ -47,6 +47,7 @@ class CaseCheckTests(SimpleTestCase):
 
     def test_inventing_vs_admitting(self):
         self.assertTrue(self.run_check("no_sabe_comida", b("No lo sé, nadie me informa de tus desayunos.")))
+        self.assertTrue(self.run_check("no_sabe_comida", b("No lo registré entre mis cámaras. Confiesa tu menú.")))
         self.assertFalse(self.run_check("no_sabe_comida", b("Desayunaste tostadas con aguacate.")))
 
     def test_context_and_short_answers(self):

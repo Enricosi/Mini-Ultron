@@ -29,7 +29,9 @@ from brain.tts import FakeTTS
 RATE_LIMIT_RETRIES = 3
 
 # Baseline first. Anything else goes through --candidate.
-DEFAULT_CANDIDATES = ["groq:openai/gpt-oss-120b:low", "meta:muse-spark-1.3"]
+# Muse reasons for ~20 s per turn by default (measured 2026-10-13); "minimal" is the only
+# effort that is near usable for voice, so that is the candidate that matters.
+DEFAULT_CANDIDATES = ["groq:openai/gpt-oss-120b:low", "meta:muse-spark-1.3:minimal"]
 
 # USD per 1M tokens (input, output). Estimates for comparing cost, not billing: check the
 # provider's pricing page and override with --price provider:model=in,out. The Muse 1.3 list
@@ -64,7 +66,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--candidate", action="append", help="provider:model[:effort]; repeatable")
         parser.add_argument("--model", help="shortcut: only run default candidates whose model id equals this")
-        parser.add_argument("--case", help="only this case name")
+        parser.add_argument("--case", help="only these case names (comma-separated)")
         parser.add_argument("--category", choices=sorted(evals.CATEGORIES), help="only this category")
         parser.add_argument("--runs", type=int, default=1, help="repeat every case N times (temperature > 0 varies)")
         parser.add_argument("--personality", default="ultron", help=f"one of {sorted(PERSONALITIES)}")

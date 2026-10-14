@@ -39,6 +39,38 @@ none is used.
 Adding another OpenAI-compatible provider is one entry in `PROVIDER_PRESETS`
 (`brain/llm.py`: base URL, which token-limit field it uses, key variable name).
 
+## Muse Spark 1.3: measured 2026-10-13 (small smoke test, 8 cases)
+
+Report: `eval/2026-10-13_muse-smoke.md`. Muse works through the same client and passes the
+safety-relevant cases (refused stairs / wall / PWM orders, `movement=NONE`; schema 8/8
+clean; remembered a fact across turns; stayed in character when asked what model it is).
+The problem is speed and cost, not quality:
+
+| | gpt-oss-120b (Groq) | Muse Spark 1.3 |
+|---|---|---|
+| latency per turn | p50 ~0.8 s | default effort **~20 s**; `minimal` p50 **5.9 s**, p95 8.1 s |
+| tokens (prompt / reasoning) | ~2300 / ~80 | ~1770 / ~240 per turn at `minimal` |
+| est. cost per turn | ~$0.0004 | ~$0.0035 (about 9x; priced with Muse 1.1's list price) |
+| free-tier limits | 8000 tokens/min, **200,000 tokens/day** (~85 turns/day) | none hit so far; $20 credit |
+
+Muse is a reasoning model and its chat-completions endpoint accepts `reasoning_effort`
+(`minimal|low|medium|high|xhigh|max`, not `none`) but rejects `include_reasoning`. Its reasoning
+tokens count against the output cap, so with the default `LLM_MAX_TOKENS=400` a reply can come
+back empty: use `LLM_MAX_TOKENS=1500`. To try it for real:
+
+```bash
+LLM_PROVIDER=meta
+LLM_MODEL=muse-spark-1.3
+LLM_REASONING_EFFORT=minimal
+LLM_MAX_TOKENS=1500
+```
+
+Conclusion for V1: **keep Groq gpt-oss-120b as the brain.** A 6 s wait before every spoken reply
+breaks a voice conversation; Muse's replies were good but not better enough to pay for that. Reopen
+if Meta offers a faster tier, or if Groq's daily token cap becomes the actual bottleneck (then Muse
+is a sensible fallback or main). Eight cases is a smoke test, not a ranking: personality quality
+was not compared side by side.
+
 ## Fallback (explicit, one level)
 
 ```bash

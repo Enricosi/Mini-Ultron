@@ -41,7 +41,7 @@ detection**: movement tests need clear floor and Enrico beside the robot (`safet
 
 ## CEREBRO
 
-- Code in this repo has: Meta provider, explicit fallback, startup config validation, interaction
+- Code in this repo has: Meta provider (works; Muse measured), explicit fallback, startup config validation, interaction
   ids in logs, expanded `eval_personality`. **The server still runs the previous deployed code**
   (`/api/health` lacks the `fallback` field) until it is redeployed — `development.md` →
   "Deploying". The server's existing `.env` stays valid (new variables are optional).
@@ -52,10 +52,12 @@ detection**: movement tests need clear floor and Enrico beside the robot (`safet
 
 ## Provider evaluation
 
-`docs/eval/` holds the reports. Baseline (Groq gpt-oss-120b) is measured; Muse Spark 1.3 could not be
-measured because no Meta key (`MODEL_API_KEY`) exists on this machine yet. The harness is ready:
-`python manage.py eval_personality --runs 3 --resilience --tpm 7000 --report ../docs/eval/<date>.md`.
-See `providers.md`.
+Muse Spark 1.3 smoke test done (`docs/eval/2026-10-13_muse-smoke.md`, 8 cases): safe and in
+character, but 5.9 s p50 at `reasoning_effort=minimal` (20 s by default) vs ~0.8 s on Groq, ~9x the
+cost. **Decision: Groq gpt-oss-120b stays.** The Groq baseline could not be re-run the same day (free
+daily cap of 200,000 tokens exhausted by the evals). Groq free tier ≈ 85 turns/day: if the robot is
+used a lot, the 20b fallback shares the problem on its own quota. `MODEL_API_KEY` is set in the
+repo-root `.env` on the dev laptop only (gitignored). See `providers.md`.
 
 ## Verification (2026-10-13)
 
