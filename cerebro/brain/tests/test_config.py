@@ -35,6 +35,11 @@ class ConfigValidationTests(SimpleTestCase):
         for needle in ("LLM_PROVIDER", "LLM_TIMEOUT_S", "STT_BACKEND", "ULTRON_PERSONALITY"):
             self.assertIn(needle, msg)
 
+    def test_muse_reasoning_efforts_are_accepted(self):
+        checks.check_settings(cfg(LLM_REASONING_EFFORT="minimal"), KEY)
+        with self.assertRaisesRegex(ImproperlyConfigured, "LLM_REASONING_EFFORT"):
+            checks.check_settings(cfg(LLM_REASONING_EFFORT="turbo"), KEY)
+
     def test_openai_compat_requires_base_url(self):
         with self.assertRaisesRegex(ImproperlyConfigured, "BASE_URL"):
             checks.check_settings(cfg(LLM_PROVIDER="openai_compat", LLM_FALLBACK_MODEL=""), {})

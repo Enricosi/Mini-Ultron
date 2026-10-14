@@ -13,7 +13,7 @@ logger = logging.getLogger("brain.config")
 
 LLM_PROVIDERS = (*PROVIDER_PRESETS, "fake")
 STRUCTURED_MODES = ("json_schema", "json_object", "none")
-REASONING_EFFORTS = ("", "none", "low", "medium", "high")
+REASONING_EFFORTS = ("", "none", "minimal", "low", "medium", "high", "xhigh", "max")
 STT_BACKENDS = ("faster_whisper", "fake")
 TTS_BACKENDS = ("piper", "fake")
 TTS_FX_MODES = ("deep", "monster", "none")
