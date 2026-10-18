@@ -118,27 +118,33 @@ static void drawMouthIfTalking() {
     if (talking && stateHasMouth(currentState)) drawMouth();
 }
 
-// --- angry: slanted brows, lids cut toward the nose, burning slit-pupil irises ---
+// --- angry: pointed blade-shaped eyes, sharp tip toward the nose, burning slit-pupil irises ---
 // dir = +1 for the left eye (nose side is +x), -1 for the right eye (mirrored).
+// Shape: outer tip (cx-16, 20), inner tip (cx+16, 30), flat-ish bottom at y 40.
+static void fillAngryEyeShape(int cx, int dir, int inset, uint16_t color) {
+    int ox = cx - (16 - inset) * dir, oy = 20 + inset / 2;  // outer tip
+    int ix = cx + (16 - inset) * dir, iy = 30;              // inner tip
+    int b2x = cx + (5 - inset / 2) * dir, b1x = cx - (7 - inset / 2) * dir, by = 40 - inset / 2;
+    display.fillTriangle(ox, oy, ix, iy, b2x, by, color);
+    display.fillTriangle(ox, oy, b2x, by, b1x, by, color);
+}
+
 static void drawAngryEye(int cx, int dir, int offset, bool hot) {
     int outerX = cx - 16 * dir;
     int innerX = cx + 16 * dir;
 
     // eye body: dark rim + red fill
-    display.fillRoundRect(cx - 14, 22, 28, 16, 7, 0x8000);
-    display.fillRoundRect(cx - 13, 23, 26, 14, 6, 0xF800);
+    fillAngryEyeShape(cx, dir, 0, 0x8000);
+    fillAngryEyeShape(cx, dir, 2, 0xF800);
 
     // iris: orange ring, hot core, black slit pupil
-    display.fillCircle(cx + offset, 31, 6, hot ? 0xFD20 : 0xFA20);
-    display.fillCircle(cx + offset, 31, 3, hot ? 0xFFE0 : 0xFD20);
-    display.fillRect(cx + offset - 1, 25, 2, 12, 0x0000);
+    display.fillCircle(cx + offset, 32, 6, hot ? 0xFD20 : 0xFA20);
+    display.fillCircle(cx + offset, 32, 3, hot ? 0xFFE0 : 0xFD20);
+    display.fillRect(cx + offset - 1, 26, 2, 13, 0x0000);
 
-    // upper lid: cut the top of the eye on a slant, lower toward the nose
-    display.fillTriangle(outerX, 18, innerX, 18, innerX, 31, 0x0000);
-
-    // brow: thick bar parallel to the lid, a 3px gap above it
-    display.fillTriangle(outerX, 11, innerX, 24, innerX, 28, 0xF800);
-    display.fillTriangle(outerX, 11, innerX, 28, outerX, 15, 0xF800);
+    // whatever of the iris pokes above the slanted top edge is cut back to black
+    display.fillTriangle(outerX, 20, outerX, 12, innerX, 12, 0x0000);
+    display.fillTriangle(outerX, 20, innerX, 12, innerX, 30, 0x0000);
 }
 
 // No fillScreen: every pixel of the eye area is repainted, so the iris pulse doesn't flicker.
@@ -152,16 +158,12 @@ static void drawAngryEyes(int offset) {
     drawAngryEyePair(offset);
 }
 
-// Blink: the brows stay, the eye is a thin slanted slit following the lid.
+// Blink: a thin slit along the slanted top edge.
 static void drawAngryClosedEyes() {
     display.fillScreen(0x0000);
     for (int dir = 1, cx = 28; dir >= -1; dir -= 2, cx = 68) {
-        int outerX = cx - 16 * dir;
-        int innerX = cx + 16 * dir;
-        display.fillTriangle(outerX, 11, innerX, 24, innerX, 28, 0xF800);
-        display.fillTriangle(outerX, 11, innerX, 28, outerX, 15, 0xF800);
-        display.drawLine(cx - 14 * dir, 25, cx + 14 * dir, 33, 0xF800);
-        display.drawLine(cx - 14 * dir, 26, cx + 14 * dir, 34, 0xF800);
+        display.drawLine(cx - 16 * dir, 24, cx + 16 * dir, 32, 0xF800);
+        display.drawLine(cx - 16 * dir, 25, cx + 16 * dir, 33, 0xF800);
     }
     drawMouthIfTalking();
 }

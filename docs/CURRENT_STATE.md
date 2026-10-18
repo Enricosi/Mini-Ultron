@@ -35,9 +35,9 @@ detection**: movement tests need clear floor and Enrico beside the robot (`safet
 - **Deployed ESP32 build is NON-DEFAULT**: `-DMINI_ULTRON_BRAIN_MOVEMENT=1`, kept on at Enrico's
   request. A plain re-flash from the source tree turns voice movement off again; to keep it:
   `arduino-cli compile --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=opi" --build-property "compiler.cpp.extra_flags=-DMINI_ULTRON_BRAIN_MOVEMENT=1" firmware/esp32/hello_ultron`
-- Face update 2026-10-18 (COMPILES, not flashed yet): emotion faces get a moving mouth while the
+- Face update 2026-10-18 (flashed): emotion faces get a moving mouth while the
   reply plays (Muse picked IDLE in 39 of 145 turns, which showed mute resting eyes); IDLE with audio
-  is shown as SPEAKING; ANGRY redrawn (slanted brows, lids, burning slit-pupil irises that throb).
+  is shown as SPEAKING; ANGRY redrawn (pointed blade-shaped eyes, no brows, burning slit-pupil irises that throb). Flashed.
 - ESP32 flash 93 % of the app partition (1,219,779 / 1,310,720 B): the next big feature needs a
   bigger partition or LittleFS animations first.
 - Both firmwares COMPILE (see "Verification" below).
