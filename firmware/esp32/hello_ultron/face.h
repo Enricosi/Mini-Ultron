@@ -29,6 +29,11 @@ FaceState getFace();
 void faceUpdate(unsigned long now);  // call every loop() iteration - non-blocking
 const char *faceStateName(FaceState state);  // canonical name, e.g. "ANGRY"
 
+// While true, the emotion faces with eyes (IDLE, ANGRY, SURPRISED, SUSPICIOUS,
+// SLEEPING) get an animated mouth under the eyes, so any expression visibly talks.
+// SPEAKING has its own waveform; the conversation flow sets this around playback.
+void faceSetTalking(bool talking);
+
 // Custom 1-bit animations (anim_player.h). While one plays it replaces the
 // state's own animation; any setFace() call cancels it (the conversation flow
 // always wins), and when a non-looping one ends the current state is redrawn.

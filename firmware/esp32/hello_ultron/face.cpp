@@ -40,6 +40,16 @@ static const unsigned long THINKING_INTERVAL = 350;
 static unsigned long lastSpeakingTime = 0;
 static const unsigned long SPEAKING_INTERVAL = 90;
 
+// --- talking mouth under the emotion faces (faceSetTalking) ---
+static bool talking = false;
+static unsigned long lastMouthTime = 0;
+static const unsigned long MOUTH_INTERVAL = 90;
+
+// --- angry: the irises throb hot/less hot ---
+static unsigned long lastAngryPulseTime = 0;
+static bool angryHot = true;
+static const unsigned long ANGRY_PULSE_INTERVAL = 300;
+
 // --- sleeping breathing pulse ---
 static unsigned long lastSleepTime = 0;
 static bool sleepBright = false;
@@ -76,14 +86,84 @@ static void drawAnimFrame(const uint8_t *frame) {
     shownFrameValid = true;
 }
 
+// --- talking mouth ---
+static bool stateHasMouth(FaceState state) {
+    return state == FACE_IDLE || state == FACE_ANGRY || state == FACE_SURPRISED ||
+           state == FACE_SUSPICIOUS || state == FACE_SLEEPING;
+}
+
+static uint16_t mouthColor(FaceState state) {
+    switch (state) {
+        case FACE_ANGRY:
+        case FACE_SUSPICIOUS: return 0xF800;
+        case FACE_SURPRISED: return 0xFFFF;
+        case FACE_SLEEPING: return 0x39E7;
+        default: return 0xFFE0;
+    }
+}
+
+// Six bars below the eyes (y 46..60), redrawn in place - only the mouth area is cleared.
+static void drawMouth() {
+    display.fillRect(16, 46, 64, 16, 0x0000);
+    int maxHeight = (currentState == FACE_SLEEPING) ? 5 : 13;  // sleepy mumbling stays small
+    uint16_t color = mouthColor(currentState);
+    for (int i = 0; i < 6; i++) {
+        int barHeight = random(2, maxHeight);
+        display.fillRect(18 + i * 10, 60 - barHeight, 6, barHeight, color);
+    }
+}
+
+// Full-screen redraws erase the mouth; every eye-drawing path ends with this.
+static void drawMouthIfTalking() {
+    if (talking && stateHasMouth(currentState)) drawMouth();
+}
+
+// --- angry: slanted brows, lids cut toward the nose, burning slit-pupil irises ---
+// dir = +1 for the left eye (nose side is +x), -1 for the right eye (mirrored).
+static void drawAngryEye(int cx, int dir, int offset, bool hot) {
+    int outerX = cx - 16 * dir;
+    int innerX = cx + 16 * dir;
+
+    // eye body: dark rim + red fill
+    display.fillRoundRect(cx - 14, 22, 28, 16, 7, 0x8000);
+    display.fillRoundRect(cx - 13, 23, 26, 14, 6, 0xF800);
+
+    // iris: orange ring, hot core, black slit pupil
+    display.fillCircle(cx + offset, 31, 6, hot ? 0xFD20 : 0xFA20);
+    display.fillCircle(cx + offset, 31, 3, hot ? 0xFFE0 : 0xFD20);
+    display.fillRect(cx + offset - 1, 25, 2, 12, 0x0000);
+
+    // upper lid: cut the top of the eye on a slant, lower toward the nose
+    display.fillTriangle(outerX, 18, innerX, 18, innerX, 31, 0x0000);
+
+    // brow: thick bar parallel to the lid, a 3px gap above it
+    display.fillTriangle(outerX, 11, innerX, 24, innerX, 28, 0xF800);
+    display.fillTriangle(outerX, 11, innerX, 28, outerX, 15, 0xF800);
+}
+
+// No fillScreen: every pixel of the eye area is repainted, so the iris pulse doesn't flicker.
+static void drawAngryEyePair(int offset) {
+    drawAngryEye(28, +1, offset, angryHot);
+    drawAngryEye(68, -1, offset, angryHot);
+}
+
 static void drawAngryEyes(int offset) {
     display.fillScreen(0x0000);
-    display.fillTriangle(20, 22, 40, 27, 38, 34, 0xF800);
-    display.fillTriangle(20, 22, 38, 34, 20, 32, 0xF800);
-    display.fillTriangle(56, 27, 76, 22, 76, 32, 0xF800);
-    display.fillTriangle(56, 27, 76, 32, 58, 34, 0xF800);
-    display.fillRect(29 + offset, 26, 3, 5, 0x0000);
-    display.fillRect(65 + offset, 26, 3, 5, 0x0000);
+    drawAngryEyePair(offset);
+}
+
+// Blink: the brows stay, the eye is a thin slanted slit following the lid.
+static void drawAngryClosedEyes() {
+    display.fillScreen(0x0000);
+    for (int dir = 1, cx = 28; dir >= -1; dir -= 2, cx = 68) {
+        int outerX = cx - 16 * dir;
+        int innerX = cx + 16 * dir;
+        display.fillTriangle(outerX, 11, innerX, 24, innerX, 28, 0xF800);
+        display.fillTriangle(outerX, 11, innerX, 28, outerX, 15, 0xF800);
+        display.drawLine(cx - 14 * dir, 25, cx + 14 * dir, 33, 0xF800);
+        display.drawLine(cx - 14 * dir, 26, cx + 14 * dir, 34, 0xF800);
+    }
+    drawMouthIfTalking();
 }
 
 static void drawIdleEyes(int offset) {
@@ -100,12 +180,14 @@ static void drawOpenEyesForState(FaceState state, int offset) {
     } else {
         drawIdleEyes(offset);
     }
+    drawMouthIfTalking();
 }
 
 static void drawClosedEyes(uint16_t color) {
     display.fillScreen(0x0000);
     display.fillRect(20, 28, 20, 2, color);
     display.fillRect(56, 28, 20, 2, color);
+    drawMouthIfTalking();
 }
 
 static void drawListeningEyes() {
@@ -126,12 +208,14 @@ static void drawSurprisedEyes() {
     display.fillCircle(67, 28, 12, 0xFFFF);
     display.fillCircle(29, 28, 4, 0x0000);
     display.fillCircle(67, 28, 4, 0x0000);
+    drawMouthIfTalking();
 }
 
 static void drawSuspiciousEyes() {
     display.fillScreen(0x0000);
     display.fillRoundRect(18, 27, 24, 5, 2, 0xF800);
     display.fillRoundRect(54, 27, 24, 5, 2, 0xF800);
+    drawMouthIfTalking();
 }
 
 static void drawSleepingEyes(bool bright) {
@@ -142,6 +226,7 @@ static void drawSleepingEyes(bool bright) {
     display.setTextColor(color);
     display.setCursor(78, 6);
     display.print("z");
+    drawMouthIfTalking();
 }
 
 static void drawSpeakingFrame() {
@@ -244,6 +329,14 @@ void setFace(FaceState newState) {
     picoLedFace(faceStateName(currentState));  // shield LEDs mirror the OLED "emotion"
 }
 
+void faceSetTalking(bool on) {
+    if (talking == on) return;
+    talking = on;
+    if (animIsPlaying() || !stateHasMouth(currentState)) return;
+    if (on) drawMouth();
+    else display.fillRect(16, 46, 64, 16, 0x0000);  // shut the mouth
+}
+
 const char *faceStateName(FaceState state) {
     switch (state) {
         case FACE_IDLE: return "IDLE";
@@ -261,7 +354,8 @@ const char *faceStateName(FaceState state) {
 
 static void updateBlinkAndLook(unsigned long now) {
     if (!eyesClosed && now - lastBlinkTime >= nextBlinkDelay) {
-        drawClosedEyes(currentState == FACE_ANGRY ? 0xF800 : 0xFFE0);
+        if (currentState == FACE_ANGRY) drawAngryClosedEyes();
+        else drawClosedEyes(0xFFE0);
         eyesClosed = true;
         blinkStartTime = now;
     }
@@ -306,8 +400,16 @@ void faceUpdate(unsigned long now) {
 
     switch (currentState) {
         case FACE_IDLE:
+            updateBlinkAndLook(now);
+            break;
+
         case FACE_ANGRY:
             updateBlinkAndLook(now);
+            if (!eyesClosed && now - lastAngryPulseTime >= ANGRY_PULSE_INTERVAL) {
+                angryHot = !angryHot;
+                drawAngryEyePair(pupilOffset);
+                lastAngryPulseTime = now;
+            }
             break;
 
         case FACE_THINKING:
@@ -344,5 +446,10 @@ void faceUpdate(unsigned long now) {
         case FACE_SURPRISED:
         case FACE_SUSPICIOUS:
             break;  // static frame, nothing to animate
+    }
+
+    if (talking && stateHasMouth(currentState) && now - lastMouthTime >= MOUTH_INTERVAL) {
+        drawMouth();
+        lastMouthTime = now;
     }
 }

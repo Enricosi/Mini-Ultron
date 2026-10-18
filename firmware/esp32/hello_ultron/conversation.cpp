@@ -72,6 +72,8 @@ static void onBrainResult(unsigned long now, const BrainResult &r) {
 
   FaceState face = FACE_SPEAKING;
   faceFromName(r.face, &face);
+  // IDLE is "neutral", but the resting eyes have no mouth: neutral *while talking* is SPEAKING.
+  if (face == FACE_IDLE && r.hasAudio) face = FACE_SPEAKING;
   setFace(face);
   applyNeck(r.neck);
   if (r.ok) motionStart(motionFromName(r.movement));  // a partial/failed turn never moves
@@ -81,6 +83,7 @@ static void onBrainResult(unsigned long now, const BrainResult &r) {
   const int16_t *pcm = brainReplyPcm(&samples);
   if (r.hasAudio && audioPlayPcm16(pcm, samples)) {
     tPlayStart = now;
+    faceSetTalking(true);  // any emotion face gets a moving mouth while the reply plays
     state = CV_SPEAKING;
   } else {
     holdUntil = now + 2 * HOLD_AFTER_SPEECH_MS;  // no audio: still show the expression
@@ -152,6 +155,7 @@ void conversationUpdate(unsigned long now) {
     }
     case CV_SPEAKING:
       if (!audioIsPlaying()) {
+        faceSetTalking(false);
         AudioStatus a = audioGetStatus();
         Serial.printf(
             "[turn] utterance=%ums | server round trip=%ums (stt=%u llm=%u tts=%u) audio dl=%ums | "
