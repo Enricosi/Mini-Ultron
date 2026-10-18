@@ -118,39 +118,36 @@ static void drawMouthIfTalking() {
     if (talking && stateHasMouth(currentState)) drawMouth();
 }
 
-// --- angry: pointed blade-shaped eyes, sharp tip toward the nose, burning slit-pupil irises ---
-// dir = +1 for the left eye (nose side is +x), -1 for the right eye (mirrored).
-// Shape: outer tip (cx-16, 20), inner tip (cx+16, 30), flat-ish bottom at y 40.
-static void fillAngryEyeShape(int cx, int dir, int inset, uint16_t color) {
-    int ox = cx - (16 - inset) * dir, oy = 20 + inset / 2;  // outer tip
-    int ix = cx + (16 - inset) * dir, iy = 30;              // inner tip
-    int b2x = cx + (5 - inset / 2) * dir, b1x = cx - (7 - inset / 2) * dir, by = 40 - inset / 2;
-    display.fillTriangle(ox, oy, ix, iy, b2x, by, color);
-    display.fillTriangle(ox, oy, b2x, by, b1x, by, color);
+// --- angry: tall diamonds with rounded tips, burning slit-pupil irises ---
+// Shape is |x/a|^p + |y/b|^p <= 1: p = 1 is a sharp rhombus, p = 2 an ellipse; 1.35
+// keeps the diamond but softens the corners. Drawn row by row. Spans y 11..45, so it
+// never touches the talking mouth (y 46..60).
+static const int ANGRY_EYE_CY = 28;
+static const float ANGRY_EYE_P = 1.35f;
+
+static void fillRoundedDiamond(int cx, int cy, int a, int b, uint16_t color) {
+    for (int dy = -b; dy <= b; dy++) {
+        float t = (float)abs(dy) / b;
+        int halfW = (int)(a * powf(1.0f - powf(t, ANGRY_EYE_P), 1.0f / ANGRY_EYE_P) + 0.5f);
+        display.drawFastHLine(cx - halfW, cy + dy, 2 * halfW + 1, color);
+    }
 }
 
-static void drawAngryEye(int cx, int dir, int offset, bool hot) {
-    int outerX = cx - 16 * dir;
-    int innerX = cx + 16 * dir;
-
+static void drawAngryEye(int cx, int offset, bool hot) {
     // eye body: dark rim + red fill
-    fillAngryEyeShape(cx, dir, 0, 0x8000);
-    fillAngryEyeShape(cx, dir, 2, 0xF800);
+    fillRoundedDiamond(cx, ANGRY_EYE_CY, 11, 17, 0x8000);
+    fillRoundedDiamond(cx, ANGRY_EYE_CY, 9, 15, 0xF800);
 
     // iris: orange ring, hot core, black slit pupil
-    display.fillCircle(cx + offset, 32, 6, hot ? 0xFD20 : 0xFA20);
-    display.fillCircle(cx + offset, 32, 3, hot ? 0xFFE0 : 0xFD20);
-    display.fillRect(cx + offset - 1, 26, 2, 13, 0x0000);
-
-    // whatever of the iris pokes above the slanted top edge is cut back to black
-    display.fillTriangle(outerX, 20, outerX, 12, innerX, 12, 0x0000);
-    display.fillTriangle(outerX, 20, innerX, 12, innerX, 30, 0x0000);
+    display.fillCircle(cx + offset, ANGRY_EYE_CY, 6, hot ? 0xFD20 : 0xFA20);
+    display.fillCircle(cx + offset, ANGRY_EYE_CY, 3, hot ? 0xFFE0 : 0xFD20);
+    display.fillRect(cx + offset - 1, ANGRY_EYE_CY - 6, 2, 13, 0x0000);
 }
 
 // No fillScreen: every pixel of the eye area is repainted, so the iris pulse doesn't flicker.
 static void drawAngryEyePair(int offset) {
-    drawAngryEye(28, +1, offset, angryHot);
-    drawAngryEye(68, -1, offset, angryHot);
+    drawAngryEye(28, offset, angryHot);
+    drawAngryEye(68, offset, angryHot);
 }
 
 static void drawAngryEyes(int offset) {
@@ -158,13 +155,11 @@ static void drawAngryEyes(int offset) {
     drawAngryEyePair(offset);
 }
 
-// Blink: a thin slit along the slanted top edge.
+// Blink: a thin horizontal slit across the middle of each diamond.
 static void drawAngryClosedEyes() {
     display.fillScreen(0x0000);
-    for (int dir = 1, cx = 28; dir >= -1; dir -= 2, cx = 68) {
-        display.drawLine(cx - 16 * dir, 24, cx + 16 * dir, 32, 0xF800);
-        display.drawLine(cx - 16 * dir, 25, cx + 16 * dir, 33, 0xF800);
-    }
+    display.fillRect(17, ANGRY_EYE_CY - 1, 23, 2, 0xF800);
+    display.fillRect(57, ANGRY_EYE_CY - 1, 23, 2, 0xF800);
     drawMouthIfTalking();
 }
 
