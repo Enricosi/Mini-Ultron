@@ -1,6 +1,6 @@
 # Mini-Ultron — Current State
 
-What exists and what is verified **right now** (2026-10-13, end of the V1 consolidation).
+What exists and what is verified **right now** (2026-10-18; V1 consolidated 2026-10-13).
 Stable rules: `../CLAUDE.md`. Settled hardware inventory and pins: `hardware.md`. Why things
 are the way they are (bugs, measurements, decisions, session by session):
 `history/SESSION_LOG.md`. Update this file after every meaningful session; keep it short.
@@ -35,9 +35,13 @@ detection**: movement tests need clear floor and Enrico beside the robot (`safet
 - **Deployed ESP32 build is NON-DEFAULT**: `-DMINI_ULTRON_BRAIN_MOVEMENT=1`, kept on at Enrico's
   request. A plain re-flash from the source tree turns voice movement off again; to keep it:
   `arduino-cli compile --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=opi" --build-property "compiler.cpp.extra_flags=-DMINI_ULTRON_BRAIN_MOVEMENT=1" firmware/esp32/hello_ultron`
-- Face update 2026-10-18: emotion faces get a moving mouth while the
-  reply plays (Muse picked IDLE in 39 of 145 turns, which showed mute resting eyes); IDLE with audio
-  is shown as SPEAKING; ANGRY: the original slanted wedges, bigger, dark rim, burning slit-pupil irises that throb, no brows. Flashed.
+- Face update 2026-10-18 (flashed in the deployed build):
+  - ANGRY: the original slanted wedges, bigger, dark rim, burning slit-pupil irises that throb, no
+    brows. **VERIFIED** — Enrico approved it on the OLED. Rejected on the way: brows, pointed blades,
+    rounded vertical diamonds; polish the existing look rather than redesign it.
+  - While a reply plays, IDLE/ANGRY/SURPRISED/SUSPICIOUS/SLEEPING get a moving mouth (`faceSetTalking`),
+    and IDLE with audio is shown as SPEAKING. Cause: Muse picked IDLE in 39 of 145 turns, which showed
+    mute resting eyes. **NOT VERIFIED** in a real conversation yet.
 - ESP32 flash 93 % of the app partition (1,219,719 / 1,310,720 B): the next big feature needs a
   bigger partition or LittleFS animations first.
 - Both firmwares COMPILE (see "Verification" below).
@@ -97,7 +101,8 @@ repo-root `.env` on the dev laptop only (gitignored). See `providers.md`.
 
 ## Next steps
 
-1. Talk to Muse for a while; if the personality disappoints, run `eval_personality --runs 3` on both and compare the appendix.
+1. In a real conversation, check the talking mouth on emotion faces and that IDLE turns now look
+   like SPEAKING (Muse personality itself: Enrico is happy with it as of 2026-10-18).
 2. Optional: detect empty replies caused by reasoning eating `LLM_MAX_TOKENS` and say so in the log.
 3. Remove the temporary `ufw` rule for port 8000 on the dev laptop if still there (see history).
 4. Legal review of Piper before any distribution.
