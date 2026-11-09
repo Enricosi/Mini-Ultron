@@ -29,10 +29,9 @@ have never been committed at any point in this repo's history (confirmed via
 start and only `*.example` templates are tracked. `freenove-car-reference/` (a full
 clone of Freenove's own GitHub repo, kept locally for reference) is also
 `.gitignore`d and has never been part of this repo's history, so it carries no
-distribution risk if this repo is ever published. The home-lab server's LAN IP
-(`<server>`) appears in docs/config — a private RFC1918 address, not a secret,
-but worth scrubbing from public docs if the repo is ever made public, purely to
-avoid advertising internal topology.
+distribution risk if this repo is ever published. The home-lab server's LAN IP,
+subnet and SSH user were scrubbed from the docs and the whole Git history before
+publishing (written as `<server>`, `<lan-subnet>`, `<user>`).
 
 ## Biggest finding — Piper TTS is GPL-3.0-or-later, imported in-process
 
