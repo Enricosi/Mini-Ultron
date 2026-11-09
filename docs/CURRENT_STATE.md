@@ -83,8 +83,7 @@ repo-root `.env` on the dev laptop only (gitignored). See `providers.md`.
 - Neck servo centers on every Pico boot (one small physical movement; accepted).
 - `/api/*` has no authentication: LAN only, never expose port 8000. `ALLOWED_HOSTS` defaults to `*`
   (`DJANGO_ALLOWED_HOSTS` narrows it).
-- Piper TTS is GPL-3.0 and imported in-process: blocks selling/open-sourcing CEREBRO until reviewed
-  by a lawyer (`../THIRD_PARTY_LICENSES.md`). Does not affect running it.
+- Piper TTS (GPL-3.0) is imported in-process; the repo is GPL-3.0 too.
 
 ## Deferred, with the condition that reopens each
 
@@ -93,16 +92,22 @@ repo-root `.env` on the dev laptop only (gitignored). See `providers.md`.
 | Ultrasonic / any obstacle sensor | Ultron is meant to move unattended, or a unit ships without a human beside it |
 | IMU (jolt reactions) | the I2S/I2C crosstalk is fixed in hardware (custom PCB, separate routing) |
 | Arms / PCA9685 | Enrico decides arms return; `arm_gestures.*` is the starting point |
-| Piper → subprocess or another TTS | a lawyer says in-process GPL is a problem, or before any sale/publication |
+| Piper → subprocess or another TTS | Enrico wants a different TTS or license |
 | Wi-Fi from any network (commercial) | the first unit leaves the home LAN (`CEREBRO_HOST` is compile-time today) |
 | Second personality | Enrico asks; registry is `brain/personalities/` |
 | Local Ollama brain | a model is chosen; set `LLM_PROVIDER=ollama`, no code needed |
 | Barge-in, persistent memory, OTA | after V1 is in daily use |
 
+## Publication (2026-11-09)
+
+Public on GitHub: https://github.com/Enricosi/Mini-Ultron (`main`, GPL-3.0, root README in
+English). Before publishing, the whole history was rewritten: the server's LAN IP, subnet and SSH
+user became `<server>`, `<lan-subnet>`, `<user>`, and the commit email became the GitHub noreply
+(set as this repo's local `user.email`). **Keep it that way:** no real IPs, SSIDs, keys or personal
+email in tracked files. Commits from before the rewrite (e.g. `27f0216`) can still be fetched by
+SHA on GitHub until GitHub garbage-collects them or support purges them.
+
 ## Next steps
 
-1. Publish the repo on GitHub with a root README (in progress 2026-11-09).
-
-Done 2026-11-09: talking mouth verified; an empty reply caused by reasoning eating
-`LLM_MAX_TOKENS` (`finish_reason=length`) now says so in the log; the temporary `ufw` rule on the
-dev laptop was removed by Enrico.
+None pending from this session. The deployed CEREBRO includes the token-budget log message
+(2026-11-09).
