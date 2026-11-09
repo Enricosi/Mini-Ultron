@@ -203,6 +203,15 @@ class ProviderTests(SimpleTestCase):
             make(lambda r: httpx.Response(200, json=ok_body(""))).complete(MESSAGES)
         self.assertEqual(ctx.exception.kind, "invalid_response")
 
+    def test_empty_reply_from_token_budget_says_so(self):
+        body = {
+            "choices": [{"message": {"content": ""}, "finish_reason": "length"}],
+            "usage": {"completion_tokens": 400, "completion_tokens_details": {"reasoning_tokens": 400}},
+        }
+        with self.assertRaisesRegex(LLMError, r"max_completion_tokens=400 \(reasoning 400") as ctx:
+            make(lambda r: httpx.Response(200, json=body), max_tokens=400).complete(MESSAGES)
+        self.assertEqual(ctx.exception.kind, "invalid_response")
+
     def test_usage_is_recorded(self):
         body = ok_body() | {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
         llm = make(lambda r: httpx.Response(200, json=body))

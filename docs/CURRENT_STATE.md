@@ -1,6 +1,6 @@
 # Mini-Ultron — Current State
 
-What exists and what is verified **right now** (2026-10-18; V1 consolidated 2026-10-13).
+What exists and what is verified **right now** (2026-11-09; V1 consolidated 2026-10-13).
 Stable rules: `../CLAUDE.md`. Settled hardware inventory and pins: `hardware.md`. Why things
 are the way they are (bugs, measurements, decisions, session by session):
 `history/SESSION_LOG.md`. Update this file after every meaningful session; keep it short.
@@ -41,7 +41,7 @@ detection**: movement tests need clear floor and Enrico beside the robot (`safet
     rounded vertical diamonds; polish the existing look rather than redesign it.
   - While a reply plays, IDLE/ANGRY/SURPRISED/SUSPICIOUS/SLEEPING get a moving mouth (`faceSetTalking`),
     and IDLE with audio is shown as SPEAKING. Cause: Muse picked IDLE in 39 of 145 turns, which showed
-    mute resting eyes. **NOT VERIFIED** in a real conversation yet.
+    mute resting eyes. **VERIFIED** in a real conversation (Enrico, 2026-11-09).
 - ESP32 flash 93 % of the app partition (1,219,719 / 1,310,720 B): the next big feature needs a
   bigger partition or LittleFS animations first.
 - Both firmwares COMPILE (see "Verification" below).
@@ -101,8 +101,8 @@ repo-root `.env` on the dev laptop only (gitignored). See `providers.md`.
 
 ## Next steps
 
-1. In a real conversation, check the talking mouth on emotion faces and that IDLE turns now look
-   like SPEAKING (Muse personality itself: Enrico is happy with it as of 2026-10-18).
-2. Optional: detect empty replies caused by reasoning eating `LLM_MAX_TOKENS` and say so in the log.
-3. Remove the temporary `ufw` rule for port 8000 on the dev laptop if still there (see history).
-4. Legal review of Piper before any distribution.
+1. Publish the repo on GitHub with a root README (in progress 2026-11-09).
+
+Done 2026-11-09: talking mouth verified; an empty reply caused by reasoning eating
+`LLM_MAX_TOKENS` (`finish_reason=length`) now says so in the log; the temporary `ufw` rule on the
+dev laptop was removed by Enrico.

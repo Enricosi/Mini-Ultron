@@ -179,10 +179,19 @@ class OpenAICompatLLM(LLMBackend):
             "reasoning": details.get("reasoning_tokens"),
         }
         try:
-            content = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError):
             raise LLMError("LLM response has no choices[0].message.content", "invalid_response") from None
         if not content or not str(content).strip():
+            if choice.get("finish_reason") == "length":
+                # Reasoning models can spend the whole budget thinking and return no text.
+                raise LLMError(
+                    f"LLM returned an empty message: hit {self.token_param}={self.max_tokens} "
+                    f"(reasoning {self.last_usage['reasoning']}, completion {self.last_usage['completion']} tokens); "
+                    "raise LLM_MAX_TOKENS or lower the reasoning effort",
+                    "invalid_response",
+                )
             raise LLMError("LLM returned an empty message", "invalid_response")
         return str(content)
 
